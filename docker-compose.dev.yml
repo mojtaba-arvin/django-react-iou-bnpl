@@ -1,0 +1,148 @@
+version: "3.8"
+services:
+  bnpl-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+      args:
+        HOST_UID: ${HOST_UID}
+        HOST_GID: ${HOST_GID}
+    container_name: bnpl-api
+    env_file:
+      - .env
+    user: "${HOST_UID}:${HOST_GID}"
+    tty: true
+    stdin_open: true
+    command: sh
+    volumes:
+      - ./backend:/app:delegated
+    ports:
+      - "8000:8000"
+    depends_on:
+      - bnpl-db
+      - bnpl-redis
+    networks:
+      - bnpl-network
+
+  bnpl-redis:
+    image: redis:7-alpine
+    container_name: bnpl-redis
+    env_file:
+      - .env
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    command: >
+      sh -c "redis-server --appendonly yes
+                 --requirepass ${REDIS_PASSWORD}
+                 --appendfilename appendonly.aof"
+    volumes:
+      - bnpl-redis-data:/data
+    networks:
+      - bnpl-network
+
+  bnpl-db:
+    image: postgres:15
+    container_name: bnpl-db
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - bnpl-db-data:/var/lib/postgresql/data
+    networks:
+      - bnpl-network
+
+  # bnpl-worker:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile.dev
+  #     args:
+  #       HOST_UID: ${HOST_UID}
+  #       HOST_GID: ${HOST_GID}
+  #   container_name: bnpl-worker
+  #   env_file:
+  #     - .env
+  #   user: "${HOST_UID}:${HOST_GID}"
+  #   working_dir: /app
+  #   volumes:
+  #     - ./backend:/app:delegated
+  #   depends_on:
+  #     - bnpl-api
+  #     - bnpl-redis
+  #   command: celery -A core worker --loglevel=INFO
+  #   networks:
+  #     - bnpl-network
+
+  # bnpl-beat:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile.dev
+  #     args:
+  #       HOST_UID: ${HOST_UID}
+  #       HOST_GID: ${HOST_GID}
+  #   container_name: bnpl-beat
+  #   env_file:
+  #     - .env
+  #   user: "${HOST_UID}:${HOST_GID}"
+  #   working_dir: /app
+  #   volumes:
+  #     - ./backend:/app:delegated
+  #   depends_on:
+  #     - bnpl-api
+  #     - bnpl-redis
+  #   command: >
+  #     celery -A core beat
+  #       --loglevel=INFO
+  #       --scheduler django_celery_beat.schedulers:DatabaseScheduler
+  #   networks:
+  #     - bnpl-network
+
+  # bnpl-frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile.dev
+  #   container_name: bnpl-frontend
+  #   env_file:
+  #     - .env
+  #   volumes:
+  #     - ./frontend:/app
+  #   ports:
+  #     - "3000:3000"
+  #   networks:
+  #     - bnpl-network
+
+  # bnpl-nginx:
+  #   image: nginx:alpine
+  #   container_name: bnpl-nginx
+  #   volumes:
+  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+  #   ports:
+  #     - "80:80"
+  #   depends_on:
+  #     - bnpl-api
+  #     - bnpl-frontend
+  #   networks:
+  #     - bnpl-network
+
+  # bnpl-tests:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile.dev
+  #   container_name: bnpl-tests
+  #   env_file:
+  #     - .env
+  #   command: pytest --maxfail=1 --disable-warnings -q
+  #   volumes:
+  #     - ./backend:/app
+  #   networks:
+  #     - bnpl-network
+
+volumes:
+  bnpl-db-data:
+  bnpl-redis-data:
+
+networks:
+  bnpl-network:
+    driver: bridge

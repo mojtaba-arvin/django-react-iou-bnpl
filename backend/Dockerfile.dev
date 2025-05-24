@@ -1,0 +1,39 @@
+# ---- Base stage (runtime dependencies) ----
+FROM python:3.13-alpine AS base
+
+# Set working directory
+WORKDIR /app
+
+# Copy and install runtime dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# Create non-root user
+ARG HOST_UID=1000
+ARG HOST_GID=1000
+RUN addgroup -g ${HOST_GID} -S appgroup \
+ && adduser -u ${HOST_UID} -S appuser -G appgroup
+
+# Set up environment for Python packages
+ENV PYTHONPATH=/home/appuser/.local/lib/python3.11/site-packages
+ENV PATH=$PYTHONPATH:$PATH
+
+# ---- Development stage ----
+FROM base AS dev
+
+# Set working directory
+WORKDIR /app
+
+# Copy dev requirements and install
+COPY requirements-dev.txt .
+RUN pip install --no-cache-dir -r requirements-dev.txt
+
+# Switch to non-root user
+USER appuser
+
+# Copy application code
+COPY --chown=appuser:appgroup . .
+
+# Default shell for interactive development
+CMD ["sh"]
