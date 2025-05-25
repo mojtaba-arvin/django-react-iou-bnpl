@@ -1,6 +1,8 @@
 Django==5.2.1
 celery==5.5.2
 djangorestframework==3.16.0
+djangorestframework-simplejwt==5.5.0
+django-cors-headers==4.7.0
 
 # Celery + Django integration
 django-celery-beat==2.8.1
@@ -9,4 +11,4 @@ django-celery-results==2.6.0
 # PostgreSQL driver
 psycopg2-binary==2.9.10
 
-dotenv-python==0.0.1
+python-decouple==3.8

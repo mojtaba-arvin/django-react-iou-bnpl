@@ -10,6 +10,9 @@ services:
     container_name: bnpl-api
     env_file:
       - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=bnpl.settings.development
+      - DJANGO_ENV=development
     user: "${HOST_UID}:${HOST_GID}"
     tty: true
     stdin_open: true
