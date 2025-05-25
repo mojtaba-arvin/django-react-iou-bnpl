@@ -31,6 +31,16 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_celery_beat',
     'django_celery_results',
+
+    # Native apps
+    'core',
+    'account',
+    'merchant',
+    'customer',
+    'plan',
+    'installment',
+    'notification',
+    'analytics',
 ]
 
 MIDDLEWARE = [
