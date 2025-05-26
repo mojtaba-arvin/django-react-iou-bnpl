@@ -2,10 +2,12 @@ import traceback
 from django.conf import settings
 from rest_framework import status
 from rest_framework.exceptions import APIException
+from rest_framework.response import Response
 from rest_framework.views import exception_handler
 from django.utils.translation import gettext_lazy as _
 from core.utils.standard_api_response_mixin import StandardApiResponseMixin
 from core.utils.error_object import ErrorObject
+from typing import Optional, Dict, Any
 
 
 class DrfExceptionHandler:
@@ -36,11 +38,32 @@ class DrfExceptionHandler:
             ]
         }
 
+    Or transforms error responses like:
+
+        {
+            "detail": "No active account found with the given credentials"
+        }
+
+    Into:
+
+        {
+            "success": false,
+            "message": "No active account found with the given credentials",
+            "data": {},
+            "errors": [
+                {
+                    "code": 401,
+                    "message": "No active account found with the given credentials",
+                    "field": null
+                }
+            ]
+        }
+
     Reference:
         https://www.django-rest-framework.org/api-guide/exceptions/
     """
     @staticmethod
-    def handle(exception, context):
+    def handle(exception: Exception, context: Optional[Dict[str, Any]]) -> Response:
         traceback.print_exc()
 
         # Handle DRF exceptions

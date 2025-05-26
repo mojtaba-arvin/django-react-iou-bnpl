@@ -1,52 +1,132 @@
+from typing import Any
 from django.utils.translation import gettext_lazy as _
 from rest_framework import generics, permissions, status
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+
+from account.models import User
 from core.utils.response_schemas import api_error_schema, build_success_response_schema
 from core.utils.standard_api_response_mixin import StandardApiResponseMixin
-from account.serializers import UserRegistrationSerializer, UserSerializer
-
+from account.serializers import (
+    UserRegistrationSerializer,
+    UserSerializer,
+    TokenOutputSerializer,
+    TokenRefreshSerializer,
+    CustomTokenObtainPairSerializer,
+)
 
 class UserRegistrationView(StandardApiResponseMixin, generics.CreateAPIView):
     """
-    Register a new user account.
+    API endpoint to register a new user account.
     """
 
     serializer_class = UserRegistrationSerializer
     permission_classes = [permissions.AllowAny]
 
     @swagger_auto_schema(
-        tags=['Authentication'],
+        tags=["Authentication"],
         operation_description="Register a new user",
         request_body=UserRegistrationSerializer,
         responses={
             status.HTTP_201_CREATED: openapi.Response(
                 description=str(_("User registered successfully")),
-                schema=build_success_response_schema(serializer_class=UserSerializer)
+                schema=build_success_response_schema(serializer_class=UserSerializer),
             ),
             status.HTTP_400_BAD_REQUEST: openapi.Response(
                 description=str(_("Validation error")),
                 schema=api_error_schema,
-            )
-        }
+            ),
+        },
     )
-    def post(self, request, *args, **kwargs):
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = self.perform_create(serializer)
 
-        output = UserSerializer(user, context={'request': request})
+        output = UserSerializer(user, context={"request": request})
         headers = self.get_success_headers(output.data)
 
         return self.success_response(
             message=str(_("User registered successfully")),
             data=output.data,
             status_code=status.HTTP_201_CREATED,
-            headers=headers
+            headers=headers,
         )
 
-    def perform_create(self, serializer):
+    def perform_create(self, serializer: UserRegistrationSerializer) -> User:
+        """
+        Save the user instance to the database.
+
+        Args:
+            serializer (UserRegistrationSerializer): The validated serializer instance.
+
+        Returns:
+            User: The created user instance.
+        """
         user = serializer.save()
         # TODO (mojtaba - 2025-05-26): Send welcome email if needed
         # TODO (mojtaba - 2025-05-26): Implement info logging level about user created.
         return user
+
+
+class CustomTokenObtainPairView(StandardApiResponseMixin, TokenObtainPairView):
+    """
+    API endpoint to obtain a new access and refresh JWT token pair.
+    """
+
+    serializer_class = CustomTokenObtainPairSerializer
+
+    @swagger_auto_schema(
+        tags=["Authentication"],
+        operation_description="Obtain JWT token pair",
+        request_body=CustomTokenObtainPairSerializer,
+        responses={
+            status.HTTP_200_OK: openapi.Response(
+                description=str(_("Token pair obtained")),
+                schema=build_success_response_schema(serializer_class=TokenOutputSerializer),
+            ),
+            status.HTTP_400_BAD_REQUEST: openapi.Response(
+                description=str(_("Unauthorized")),
+                schema=api_error_schema,
+            ),
+        },
+    )
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        response = super().post(request, *args, **kwargs)
+        return self.success_response(
+            message=str(_("Login successful")),
+            data=response.data,
+            status_code=response.status_code,
+        )
+
+
+class CustomTokenRefreshView(StandardApiResponseMixin, TokenRefreshView):
+    """
+    API endpoint to refresh the access token using a valid refresh token.
+    """
+
+    @swagger_auto_schema(
+        tags=["Authentication"],
+        operation_description="Refresh JWT access token",
+        request_body=TokenRefreshSerializer,
+        responses={
+            status.HTTP_200_OK: openapi.Response(
+                description=str(_("Token refreshed successfully")),
+                schema=build_success_response_schema(serializer_class=TokenOutputSerializer),
+            ),
+            status.HTTP_401_UNAUTHORIZED: openapi.Response(
+                description=str(_("Invalid token")),
+                schema=api_error_schema,
+            ),
+        },
+    )
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        response = super().post(request, *args, **kwargs)
+        return self.success_response(
+            message=str(_("Token refreshed successfully")),
+            data=response.data,
+            status_code=response.status_code,
+        )

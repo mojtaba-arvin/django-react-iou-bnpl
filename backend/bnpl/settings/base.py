@@ -28,10 +28,12 @@ INSTALLED_APPS = [
     # Third-party
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_celery_beat',
     'django_celery_results',
     'drf_yasg',
+
 
     # Native apps
     'core',
@@ -68,6 +70,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    'EXCEPTION_HANDLER': 'core.utils.custom_drf_exception_handler.drf_exception_handler',
 }
 
 # Security
@@ -78,7 +81,11 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
     'SIGNING_KEY': config('JWT_SIGNING_KEY', default=SECRET_KEY),
+    'USER_ID_FIELD': 'email',
+    'USER_ID_CLAIM': 'email',
+    'TOKEN_OBTAIN_SERIALIZER': 'account.serializers.CustomTokenObtainPairSerializer',
 }
 
 # Core settings that both dev and production will need
@@ -165,6 +172,14 @@ AUTH_USER_MODEL = 'account.User'
 
 # swagger settings
 SWAGGER_SETTINGS = {
+    'SECURITY_DEFINITIONS': {
+        'Bearer': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header'
+        }
+    },
+    'USE_SESSION_AUTH': False,
     'DEFAULT_AUTO_SCHEMA_CLASS': 'core.utils.swagger_auto_schema.CustomAutoSchema',
 }
 
