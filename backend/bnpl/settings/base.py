@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_celery_beat',
     'django_celery_results',
+    'drf_yasg',
 
     # Native apps
     'core',
@@ -161,3 +162,12 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'account.User'
+
+# swagger settings
+SWAGGER_SETTINGS = {
+    'DEFAULT_AUTO_SCHEMA_CLASS': 'core.utils.swagger_auto_schema.CustomAutoSchema',
+}
+
+REDOC_SETTINGS = {
+    'LAZY_RENDERING': False,
+}

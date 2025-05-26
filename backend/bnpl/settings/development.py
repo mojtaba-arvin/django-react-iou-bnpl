@@ -14,3 +14,7 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 # CORS settings
 CORS_ALLOW_ALL_ORIGINS = True
+
+# Enable Swagger UI only in development
+SWAGGER_ENABLED = True
+SWAGGER_API_URL = config('SWAGGER_API_URL', default='http://localhost:8000')
