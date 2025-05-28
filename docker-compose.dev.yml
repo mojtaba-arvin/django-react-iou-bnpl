@@ -19,6 +19,11 @@ services:
     command: sh
     volumes:
       - ./backend:/app:delegated
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     ports:
       - "8000:8000"
     depends_on:
