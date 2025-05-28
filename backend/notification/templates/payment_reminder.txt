@@ -1,0 +1,7 @@
+Hello {{ customer.email }},
+
+This is a reminder that your payment of {{ amount }} for plan "{{ plan }}"
+is due on {{ due_date|date:"Y-m-d" }}.
+
+Thank you,
+BNPL Team
