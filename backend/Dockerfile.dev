@@ -32,8 +32,5 @@ RUN pip install --no-cache-dir -r requirements-dev.txt
 # Switch to non-root user
 USER appuser
 
-# Copy application code
-COPY --chown=appuser:appgroup . .
-
 # Default shell for interactive development
 CMD ["sh"]

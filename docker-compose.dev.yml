@@ -1,22 +1,16 @@
 version: "3.8"
 services:
   bnpl-api:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
-      args:
-        HOST_UID: ${HOST_UID}
-        HOST_GID: ${HOST_GID}
+    image: mojtabaarvin/bnpl-backend:dev-latest
     container_name: bnpl-api
-    env_file:
-      - .env
+    env_file: .env
     environment:
       - DJANGO_SETTINGS_MODULE=bnpl.settings.development
       - DJANGO_ENV=development
-    user: "${HOST_UID}:${HOST_GID}"
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     tty: true
     stdin_open: true
-    command: sh
+    command: ["sh"]
     volumes:
       - ./backend:/app:delegated
     logging:
@@ -27,8 +21,10 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - bnpl-db
-      - bnpl-redis
+      bnpl-db:
+        condition: service_healthy
+      bnpl-redis:
+        condition: service_started
     networks:
       - bnpl-network
 
@@ -37,13 +33,19 @@ services:
     container_name: bnpl-redis
     env_file:
       - .env
-    environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-    command: >
-      redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
-                   --appendfilename appendonly.aof --bind 0.0.0.0
+    command: [
+      "redis-server",
+      "--requirepass", "${REDIS_PASSWORD}",
+      "--appendonly", "yes",
+      "--appendfilename", "appendonly.aof"
+    ]
     volumes:
       - bnpl-redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 3
     networks:
       - bnpl-network
 
@@ -58,48 +60,41 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
       - bnpl-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - bnpl-network
 
   bnpl-worker:
-   build:
-     context: ./backend
-     dockerfile: Dockerfile.dev
-     args:
-       HOST_UID: ${HOST_UID}
-       HOST_GID: ${HOST_GID}
+   image: mojtabaarvin/bnpl-backend:dev-latest
    container_name: bnpl-worker
    env_file:
      - .env
    environment:
      - DJANGO_SETTINGS_MODULE=bnpl.settings.development
      - DJANGO_ENV=development
-   user: "${HOST_UID}:${HOST_GID}"
-   working_dir: /app
+   user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
    volumes:
      - ./backend:/app:delegated
    depends_on:
      - bnpl-api
      - bnpl-redis
-   command: celery -A bnpl worker --loglevel=info
+   command: ["celery", "-A", "bnpl", "worker", "--loglevel=info"]
    networks:
        - bnpl-network
 
   bnpl-beat:
-   build:
-     context: ./backend
-     dockerfile: Dockerfile.dev
-     args:
-       HOST_UID: ${HOST_UID}
-       HOST_GID: ${HOST_GID}
+   image: mojtabaarvin/bnpl-backend:dev-latest
    container_name: bnpl-beat
    env_file:
      - .env
    environment:
      - DJANGO_SETTINGS_MODULE=bnpl.settings.development
      - DJANGO_ENV=development
-   user: "${HOST_UID}:${HOST_GID}"
-   working_dir: /app
+   user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
    volumes:
      - ./backend:/app:delegated
    depends_on:
@@ -140,9 +135,7 @@ services:
   #     - bnpl-network
 
   bnpl-tests:
-     build:
-       context: ./backend
-       dockerfile: Dockerfile.dev
+     image: mojtabaarvin/bnpl-backend:dev-latest
      container_name: bnpl-tests
      env_file:
        - .env
@@ -150,6 +143,7 @@ services:
        - DJANGO_SETTINGS_MODULE=bnpl.settings.development
        - DJANGO_ENV=development
      command: pytest --maxfail=1 --disable-warnings -q
+     restart: "no"
      volumes:
        - ./backend:/app
      depends_on:
