@@ -40,9 +40,8 @@ services:
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
     command: >
-      sh -c "redis-server --appendonly yes
-                 --requirepass ${REDIS_PASSWORD}
-                 --appendfilename appendonly.aof"
+      redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+                   --appendfilename appendonly.aof --bind 0.0.0.0
     volumes:
       - bnpl-redis-data:/data
     networks:
@@ -62,50 +61,56 @@ services:
     networks:
       - bnpl-network
 
-  # bnpl-worker:
-  #   build:
-  #     context: ./backend
-  #     dockerfile: Dockerfile.dev
-  #     args:
-  #       HOST_UID: ${HOST_UID}
-  #       HOST_GID: ${HOST_GID}
-  #   container_name: bnpl-worker
-  #   env_file:
-  #     - .env
-  #   user: "${HOST_UID}:${HOST_GID}"
-  #   working_dir: /app
-  #   volumes:
-  #     - ./backend:/app:delegated
-  #   depends_on:
-  #     - bnpl-api
-  #     - bnpl-redis
-  #   command: celery -A core worker --loglevel=INFO
-  #   networks:
-  #     - bnpl-network
+  bnpl-worker:
+   build:
+     context: ./backend
+     dockerfile: Dockerfile.dev
+     args:
+       HOST_UID: ${HOST_UID}
+       HOST_GID: ${HOST_GID}
+   container_name: bnpl-worker
+   env_file:
+     - .env
+   environment:
+     - DJANGO_SETTINGS_MODULE=bnpl.settings.development
+     - DJANGO_ENV=development
+   user: "${HOST_UID}:${HOST_GID}"
+   working_dir: /app
+   volumes:
+     - ./backend:/app:delegated
+   depends_on:
+     - bnpl-api
+     - bnpl-redis
+   command: celery -A bnpl worker --loglevel=info
+   networks:
+       - bnpl-network
 
-  # bnpl-beat:
-  #   build:
-  #     context: ./backend
-  #     dockerfile: Dockerfile.dev
-  #     args:
-  #       HOST_UID: ${HOST_UID}
-  #       HOST_GID: ${HOST_GID}
-  #   container_name: bnpl-beat
-  #   env_file:
-  #     - .env
-  #   user: "${HOST_UID}:${HOST_GID}"
-  #   working_dir: /app
-  #   volumes:
-  #     - ./backend:/app:delegated
-  #   depends_on:
-  #     - bnpl-api
-  #     - bnpl-redis
-  #   command: >
-  #     celery -A core beat
-  #       --loglevel=INFO
-  #       --scheduler django_celery_beat.schedulers:DatabaseScheduler
-  #   networks:
-  #     - bnpl-network
+  bnpl-beat:
+   build:
+     context: ./backend
+     dockerfile: Dockerfile.dev
+     args:
+       HOST_UID: ${HOST_UID}
+       HOST_GID: ${HOST_GID}
+   container_name: bnpl-beat
+   env_file:
+     - .env
+   environment:
+     - DJANGO_SETTINGS_MODULE=bnpl.settings.development
+     - DJANGO_ENV=development
+   user: "${HOST_UID}:${HOST_GID}"
+   working_dir: /app
+   volumes:
+     - ./backend:/app:delegated
+   depends_on:
+     - bnpl-api
+     - bnpl-redis
+   command: >
+     celery -A bnpl beat
+       --loglevel=INFO
+       --scheduler django_celery_beat.schedulers:DatabaseScheduler
+   networks:
+     - bnpl-network
 
   # bnpl-frontend:
   #   build:
@@ -134,18 +139,24 @@ services:
   #   networks:
   #     - bnpl-network
 
-  # bnpl-tests:
-  #   build:
-  #     context: ./backend
-  #     dockerfile: Dockerfile.dev
-  #   container_name: bnpl-tests
-  #   env_file:
-  #     - .env
-  #   command: pytest --maxfail=1 --disable-warnings -q
-  #   volumes:
-  #     - ./backend:/app
-  #   networks:
-  #     - bnpl-network
+  bnpl-tests:
+     build:
+       context: ./backend
+       dockerfile: Dockerfile.dev
+     container_name: bnpl-tests
+     env_file:
+       - .env
+     environment:
+       - DJANGO_SETTINGS_MODULE=bnpl.settings.development
+       - DJANGO_ENV=development
+     command: pytest --maxfail=1 --disable-warnings -q
+     volumes:
+       - ./backend:/app
+     depends_on:
+       - bnpl-db
+       - bnpl-redis
+     networks:
+       - bnpl-network
 
 volumes:
   bnpl-db-data:
