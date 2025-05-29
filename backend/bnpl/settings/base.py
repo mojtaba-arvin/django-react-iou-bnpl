@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 import os
 from datetime import timedelta
+from celery.schedules import crontab
 from decouple import config, Csv
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -61,16 +62,32 @@ MIDDLEWARE = [
 CELERY_BROKER_URL = config('REDIS_URL')
 CELERY_RESULT_BACKEND = 'django-db'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+CELERY_BEAT_SCHEDULE = {
+    'check-overdue-installments': {
+        'task': 'installment.tasks.check_overdue_installments',
+        'schedule': crontab(hour=0, minute=0),  # Daily at midnight
+    },
+    'send-payment-reminders': {
+        'task': 'notification.tasks.send_payment_reminders',
+        'schedule': crontab(hour=9, minute=0),  # Daily at 9 AM
+    },
+    'update-overdue-status': {
+        'task': 'installment.tasks.check_overdue_installments',
+        'schedule': crontab(hour=0, minute=0),  # Daily at midnight
+    }
+}
 
 # DRF Configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'account.authentication.active_user.ActiveUserJWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
     'EXCEPTION_HANDLER': 'core.utils.custom_drf_exception_handler.drf_exception_handler',
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 5,
 }
 
 # Security

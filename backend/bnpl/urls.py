@@ -23,14 +23,21 @@ from drf_yasg import openapi
 from rest_framework import permissions
 
 urlpatterns = [
+    # Admin page
     path('admin/', admin.site.urls),
+
     # API entry point — scalable grouping for future apps
     path('api/', include([
         path('auth/', include('account.urls')),
-    ])),]
+        path('plans/', include('plan.urls')),
+        path('installments/', include('installment.urls')),
+        path('analytics/', include('analytics.urls')),
+        path('customers/', include('customer.urls')),
+    ])),
+]
 
 if getattr(settings, 'SWAGGER_ENABLED', False):
-    # Schema View for Swagger
+    # Schema view for Swagger
     schema_view = get_schema_view(
         openapi.Info(
             title="BNPL API",
@@ -42,6 +49,7 @@ if getattr(settings, 'SWAGGER_ENABLED', False):
         permission_classes=[permissions.AllowAny],
         url=settings.SWAGGER_API_URL,  # Tells Swagger the correct base path for endpoints
     )
+
     # Swagger/Redoc routes
     urlpatterns += [
         re_path(
