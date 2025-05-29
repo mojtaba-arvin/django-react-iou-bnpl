@@ -5,9 +5,14 @@ from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 from django.utils.translation import gettext_lazy as _
+
+from core.exceptions import BusinessException
 from core.utils.standard_api_response_mixin import StandardApiResponseMixin
 from core.utils.error_object import ErrorObject
+from core.logging.logger import get_logger
 from typing import Optional, Dict, Any
+
+logger = get_logger(__name__)
 
 
 class DrfExceptionHandler:
@@ -66,6 +71,21 @@ class DrfExceptionHandler:
     def handle(exception: Exception, context: Optional[Dict[str, Any]]) -> Response:
         traceback.print_exc()
 
+        if isinstance(exception, BusinessException):
+            if getattr(exception, 'errors', None):
+                errors = exception.errors
+            else:
+                errors = [ErrorObject(
+                    code=exception.status_code,
+                    message=str(exception.detail),
+                    field=None
+                ).to_dict()]
+            return StandardApiResponseMixin().error_response(
+                message=str(exception.detail),
+                errors=errors,
+                status_code=exception.status_code
+            )
+
         # Handle DRF exceptions
         if isinstance(exception, APIException):
             # Delegate to DRF to get status_code & default data
@@ -118,17 +138,21 @@ class DrfExceptionHandler:
                 status_code=response.status_code
             )
 
-        # TODO (mojtaba - 2025-05-26): handle business exceptions here.
-
         # Handle internal errors
-        error = ErrorObject(
+        error_obj = ErrorObject(
             code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             message=str(exception.args[0]) if exception.args else str(exception),
             details=traceback.format_exc() if settings.DEBUG else None
         )
+        logger.critical(
+            "unhandled_exception",
+            operation="exception_handler",
+            exc_info=True,
+            errors=[error_obj.to_dict()]
+        )
         return StandardApiResponseMixin().error_response(
             message=str(_("Unexpected server error")),
-            errors=[error.to_dict()],
+            errors=[error_obj.to_dict()],
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 

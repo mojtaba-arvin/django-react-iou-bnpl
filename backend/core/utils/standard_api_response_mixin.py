@@ -24,25 +24,25 @@ class StandardApiResponseMixin:
         Build a standardized API response.
 
         Args:
-            success: Boolean indicating if the request was successful
-            message: Human-readable message describing the result
-            data: Main payload of the response (for successful requests)
-            errors: List of error details (for failed requests)
-            status_code: HTTP status code
-            pagination: Pagination metadata (for paginated responses)
-            headers: Optional dict of HTTP headers to include in the response
+            success: Boolean indicating if the request was successful.
+            message: Human-readable message describing the result.
+            data: Main payload of the response (for successful requests).
+            errors: List of error details (for failed requests).
+            status_code: HTTP status code (default is 200 OK).
+            pagination: Pagination metadata (for paginated responses).
+            headers: Optional dict of HTTP headers to include in the response.
 
         Returns:
-            DRF Response object with standardized format and headers
+            DRF Response object with standardized format and headers.
         """
         response_data: Dict[str, Any] = {
             "success": success,
             "message": message,
-            "data": data if data is not None else {},
-            "errors": errors if errors is not None else [],
+            "data": data or {},
+            "errors": errors or [],
         }
 
-        if pagination is not None:
+        if pagination:
             response_data["pagination"] = pagination
 
         return Response(response_data, status=status_code, headers=headers)
@@ -67,7 +67,6 @@ class StandardApiResponseMixin:
             headers=headers,
         )
 
-
     def error_response(
         self,
         message: str = str(_("An error occurred")),
@@ -89,47 +88,33 @@ class StandardApiResponseMixin:
             headers=headers,
         )
 
-    # Common HTTP status responses
-    def created_response(
-        self,
-        message: str = _("Resource created successfully"),
-        data: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None,
+    def get_paginated_success_response(
+            self,
+            data: List[Dict[str, Any]],
+            message: str = str(_("Operation completed successfully"))
     ) -> Response:
-        return self.success_response(message, data, status_code=status.HTTP_201_CREATED, headers=headers)
+        """
+        Return a success response for paginated data.
+        Uses DRF's pagination attributes set on the view.
+        """
+        if not hasattr(self, 'paginator') or not hasattr(self.paginator, 'page'):
+            raise AttributeError(
+                f"{self.__class__.__name__} must be used with a paginator to call get_paginated_success_response()."
+            )
 
-    def not_found_response(
-        self,
-        message: str = _("Resource not found"),
-        headers: Optional[Dict[str, str]] = None,
-    ) -> Response:
-        return self.error_response(message, status_code=status.HTTP_404_NOT_FOUND, headers=headers)
+        page_obj = self.paginator.page
 
-    def forbidden_response(
-        self,
-        message: str = _("Permission denied"),
-        headers: Optional[Dict[str, str]] = None,
-    ) -> Response:
-        return self.error_response(message, status_code=status.HTTP_403_FORBIDDEN, headers=headers)
+        pagination_data = {
+            "total_items": page_obj.paginator.count,
+            "total_pages": page_obj.paginator.num_pages,
+            "current_page": page_obj.number,
+            "page_size": self.paginator.get_page_size(self.request),
+            "next": self.paginator.get_next_link(),
+            "previous": self.paginator.get_previous_link(),
+        }
 
-    def unauthorized_response(
-        self,
-        message: str = _("Authentication required"),
-        headers: Optional[Dict[str, str]] = None,
-    ) -> Response:
-        return self.error_response(message, status_code=status.HTTP_401_UNAUTHORIZED, headers=headers)
-
-    def validation_error_response(
-        self,
-        errors: List[Dict[str, Any]],
-        message: str = _("Validation error"),
-        headers: Optional[Dict[str, str]] = None,
-    ) -> Response:
-        return self.error_response(message, errors, status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, headers=headers)
-
-    def server_error_response(
-        self,
-        message: str = _("Internal server error"),
-        headers: Optional[Dict[str, str]] = None,
-    ) -> Response:
-        return self.error_response(message, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, headers=headers)
+        return self.success_response(
+            message=message,
+            data=data,
+            pagination=pagination_data,
+        )
