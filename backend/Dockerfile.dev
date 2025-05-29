@@ -35,5 +35,6 @@ USER appuser
 # Copy application code
 COPY --chown=appuser:appgroup . .
 
-# Default shell for interactive development
+# Set entrypoint and default command
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["sh"]
