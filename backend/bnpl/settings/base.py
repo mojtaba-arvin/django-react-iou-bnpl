@@ -203,3 +203,6 @@ SWAGGER_SETTINGS = {
 REDOC_SETTINGS = {
     'LAZY_RENDERING': False,
 }
+
+# Disable compatibility mode for Swagger renderers to avoid deprecation warning
+SWAGGER_USE_COMPAT_RENDERERS = False

@@ -1,0 +1,178 @@
+name: Backend Tests
+
+concurrency:
+  group: backend-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_run:
+    workflows: ["Build and Push Backend Docker Image"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-tests.yml'
+
+jobs:
+
+  test-orchestration:
+    name: Determine Test Requirements
+    runs-on: ubuntu-latest
+    outputs:
+      run_backend_tests: ${{ steps.decide.outputs.run_backend }}
+      skip_ci: ${{ steps.skip_check.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for [ci skip]
+        id: skip_check
+        run: |
+          REGEX='\[ci[ _-]?skip\]'
+          COMMIT_MESSAGE="${{ github.event.head_commit.message || github.event.pull_request.title }}"
+          echo "Commit message: $COMMIT_MESSAGE"
+      
+          if [[ "$COMMIT_MESSAGE" =~ $REGEX ]]; then
+            echo "Found [ci skip] in commit message. Skipping CI."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "No [ci skip] found. Continuing CI."
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Detect changed paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/backend-tests.yml'
+            docker_changes:
+              - 'backend/Dockerfile.dev'
+              - 'backend/requirements*.txt'
+              - '.github/workflows/backend-docker-publish.yml'
+      - name: Decide which tests to run
+        id: decide
+        run: |
+          # Default
+          run_backend=false
+          
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            echo "Triggered by workflow_run (after docker build). Enabling backend tests."
+            run_backend=true
+          # If triggered by push/PR and not by docker file changes
+          elif [[ "${{ steps.filter.outputs.docker_changes }}" == "false" && "${{ steps.filter.outputs.backend }}" == "true" ]]; then
+            echo "Backend code changed, but no docker changes. Enabling backend tests."
+            run_backend=true
+          fi
+
+          echo "Final decision: run_backend=$run_backend"
+          echo "run_backend=$run_backend" >> $GITHUB_OUTPUT
+
+  backend-tests:
+    needs: test-orchestration
+    if: ${{ needs.test-orchestration.outputs.run_backend_tests == 'true' && needs.test-orchestration.outputs.skip_ci == 'false' }}
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_PROJECT_NAME: bnpl-test-${{ github.run_id }}
+      POSTGRES_DB: test_${{ github.run_id }}
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_pass
+      REDIS_PASSWORD: test_redis
+      REDIS_URL: redis://:test_redis@bnpl-redis:6379/0
+      DJANGO_SECRET_KEY: django-secret-key-for-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up test environment
+        run: |
+          # Create and populate .env file with required variables
+          echo "POSTGRES_DB=$POSTGRES_DB" > .env
+          echo "POSTGRES_USER=$POSTGRES_USER" >> .env
+          echo "POSTGRES_PASSWORD=$POSTGRES_PASSWORD" >> .env
+          echo "REDIS_PASSWORD=$REDIS_PASSWORD" >> .env
+          echo "REDIS_URL=REDIS_URL" >> .env
+          echo "DJANGO_SECRET_KEY=DJANGO_SECRET_KEY" >> .env
+
+          mkdir -p backend/test_artifacts
+          TARGET_UID=1000
+          sudo chown -R $TARGET_UID:$TARGET_UID backend/test_artifacts
+          
+          docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/bnpl-backend:dev-latest
+
+      - name: Start dependencies
+        run: |
+          docker compose -f docker-compose.dev.yml up -d bnpl-db bnpl-redis
+          
+          # Wait for PostgreSQL to be fully ready (more robust version)
+          echo "Waiting for PostgreSQL to become ready..."
+          for i in {1..30}; do
+            if docker compose -f docker-compose.dev.yml exec -T bnpl-db \
+               pg_isready -U $POSTGRES_USER -d $POSTGRES_DB -h 127.0.0.1 -t 1; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Attempt $i/30: PostgreSQL not ready yet..."
+            sleep 1
+          done
+          
+          # Verify Redis connection too
+          docker compose -f docker-compose.dev.yml exec -T bnpl-redis \
+            redis-cli -a $REDIS_PASSWORD ping
+
+      - name: Execute tests with full logging
+        run: |
+          docker compose -f docker-compose.dev.yml run --rm -v $(pwd)/backend/test_artifacts:/app/test_artifacts bnpl-tests \
+            sh -c "pytest --junitxml=/app/test_artifacts/junit-report-${{ github.run_number }}.xml \
+                    --cov=./ --cov-report=xml:/app/test_artifacts/coverage-report.xml \
+                    -r a \
+                    --capture=no \
+                    | tee /app/test_artifacts/test-execution.log"
+
+      - name: Process test outputs
+        run: |
+          # Extract deprecation warnings for tracking (without failing the build)
+          grep -A 2 -B 2 -i 'DeprecationWarning' backend/test_artifacts/test-execution.log > backend/test_artifacts/deprecation-warnings.txt || true
+          
+          # Count warnings
+          WARN_COUNT=$(grep -c -i 'warning' backend/test_artifacts/test-execution.log || true)
+          echo "Total warnings detected: $WARN_COUNT"
+          echo "warn_count=$WARN_COUNT" >> $GITHUB_ENV
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-artifacts-${{ github.run_number }}-${{ github.ref_name }}
+          path: |
+            backend/test_artifacts/junit-report-${{ github.run_number }}.xml
+            backend/test_artifacts/coverage-report.xml
+            backend/test_artifacts/test-execution.log
+            backend/test_artifacts/deprecation-warnings.txt
+          retention-days: 7
+
+      - name: Notify about deprecations
+        if: env.warn_count != 0
+        run: |
+          if [ -s "backend/test_artifacts/deprecation-warnings.txt" ]; then
+            DEPRECATION_COUNT=$(wc -l < backend/test_artifacts/deprecation-warnings.txt)
+            echo "::warning::Found ${{ env.warn_count }} warnings including $DEPRECATION_COUNT deprecation warnings"
+            echo "Deprecation warnings preview:"
+            head -n 10 backend/test_artifacts/deprecation-warnings.txt
+          elif [ -f "backend/test_artifacts/test-execution.log" ]; then
+            echo "::warning::Found ${{ env.warn_count }} warnings (no specific deprecation warnings)"
+          else
+            echo "::warning::Warning count detected but no log files available"
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: docker compose -f docker-compose.dev.yml down -v

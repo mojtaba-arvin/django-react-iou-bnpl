@@ -178,3 +178,6 @@ cython_debug/
 # Logs
 logs/
 *.log
+
+# Test artifacts
+backend/test_artifacts/
