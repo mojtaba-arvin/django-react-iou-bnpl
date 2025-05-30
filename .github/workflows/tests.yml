@@ -1,0 +1,106 @@
+name: Selective Tests (Backend + Frontend)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend_changed: ${{ steps.filter.outputs.backend }}
+      frontend_changed: ${{ steps.filter.outputs.frontend }}
+      ci_skipped: ${{ steps.skip_check.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Detect [ci skip]
+        id: skip_check
+        run: |
+          if [[ "${{ github.event.head_commit.message || github.event.pull_request.title }}" == *"[ci skip]"* ]]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Detect changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/*.yml'
+              - 'docker-compose*.yml'
+            frontend:
+              - 'frontend/**'
+
+  backend-tests:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.backend_changed == 'true' && needs.detect-changes.outputs.ci_skipped == 'false' }}
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_DB: test_${{ github.run_id }}
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_pass_${{ github.run_number }}
+      REDIS_PASSWORD: test_redis_${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Docker
+        run: sudo systemctl start docker
+
+      - name: Create artifacts directory
+        run: mkdir -p backend/test_artifacts
+
+      - name: Pull required images
+        run: |
+          docker-compose -f docker-compose.dev.yml pull --ignore-pull-failures bnpl-db bnpl-redis bnpl-tests
+
+      - name: Start dependencies
+        run: |
+          docker-compose -f docker-compose.dev.yml up -d bnpl-db bnpl-redis
+          docker-compose -f docker-compose.dev.yml exec -T bnpl-db pg_isready -U $POSTGRES_USER
+
+      - name: Execute tests with full logging
+        run: |
+          docker-compose -f docker-compose.dev.yml run --rm -v $(pwd)/backend/test_artifacts:/app/test_artifacts bnpl-tests \
+            bash -c "pytest --junitxml=/app/test_artifacts/junit-report-${{ github.run_number }}.xml \
+                    --cov=./ --cov-report=xml:/app/test_artifacts/coverage-report.xml \
+                    -r a \
+                    --capture=no \
+                    | tee /app/test_artifacts/test-execution.log"
+
+      - name: Process test outputs
+        run: |
+          # Extract deprecation warnings for tracking (without failing the build)
+          grep -A 2 -B 2 -i 'DeprecationWarning' backend/test_artifacts/test-execution.log > backend/test_artifacts/deprecation-warnings.txt || true
+          
+          # Count warnings
+          WARN_COUNT=$(grep -c -i 'warning' backend/test_artifacts/test-execution.log || true)
+          echo "Total warnings detected: $WARN_COUNT"
+          echo "warn_count=$WARN_COUNT" >> $GITHUB_ENV
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: backend-test-artifacts-${{ github.run_number }}-${{ github.ref_name }}
+          path: |
+            backend/test_artifacts/junit-report-${{ github.run_number }}.xml
+            backend/test_artifacts/coverage-report.xml
+            backend/test_artifacts/test-execution.log
+            backend/test_artifacts/deprecation-warnings.txt
+          retention-days: 7
+
+      - name: Notify about deprecations
+        if: env.warn_count != 0
+        run: |
+          echo "::warning::Found ${{ env.warn_count }} warnings including $(wc -l < backend/test_artifacts/deprecation-warnings.txt) deprecation warnings"
+          echo "Deprecation warnings preview:"
+          head -n 10 backend/test_artifacts/deprecation-warnings.txt
+
+      - name: Cleanup
+        if: always()
+        run: docker-compose -f docker-compose.dev.yml down -v

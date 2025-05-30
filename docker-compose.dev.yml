@@ -142,7 +142,12 @@ services:
      environment:
        - DJANGO_SETTINGS_MODULE=bnpl.settings.development
        - DJANGO_ENV=development
-     command: pytest --maxfail=1 --disable-warnings -q
+     command: >
+        mkdir -p /app/test_artifacts && \
+        pytest --junitxml=/app/test_artifacts/junit-report-local.xml \
+        --cov=./ --cov-report=xml:/app/test_artifacts/coverage-report.xml \
+        -r a --capture=no \
+        | tee /app/test_artifacts/test-execution.log
      restart: "no"
      volumes:
        - ./backend:/app
