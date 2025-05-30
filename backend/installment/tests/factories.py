@@ -1,17 +1,8 @@
 import factory
 from factory.django import DjangoModelFactory
-from account.models import User
+from customer.tests.factories import CustomerUserFactory
 from installment.models import InstallmentPlan, Installment
 from datetime import date, timedelta
-
-
-class CustomerFactory(DjangoModelFactory):
-    class Meta:
-        model = User
-
-    email = factory.Sequence(lambda n: f'customer{n}@example.com')
-    password = factory.PostGenerationMethodCall('set_password', 'testpass123')
-    user_type = User.UserType.CUSTOMER
 
 
 class InstallmentPlanFactory(DjangoModelFactory):
@@ -19,7 +10,7 @@ class InstallmentPlanFactory(DjangoModelFactory):
         model = InstallmentPlan
 
     plan = factory.SubFactory('plan.tests.factories.PlanFactory')
-    customer = factory.SubFactory(CustomerFactory)
+    customer = factory.SubFactory(CustomerUserFactory)
     start_date = factory.LazyAttribute(lambda _: date.today())  # Use LazyAttribute for flexibility
 
 

@@ -20,6 +20,14 @@ class CustomerUserFactory(DjangoModelFactory):
     password = factory.PostGenerationMethodCall('set_password', 'testpass123')
     user_type = User.UserType.CUSTOMER
 
+    # Explicitly save the instance after post-generation hooks to ensure
+    # changes (like password hashing) are persisted. This avoids deprecation
+    # warnings and aligns with future factory_boy behavior.
+    @factory.post_generation
+    def save_user(self, create, extracted, **kwargs):
+        if create:
+            self.save()
+
 
 class CustomerProfileFactory(DjangoModelFactory):
     """
