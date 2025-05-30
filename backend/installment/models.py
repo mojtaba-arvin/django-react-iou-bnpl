@@ -109,7 +109,7 @@ class Installment(AbstractTimestampedModel):
         ordering = ['sequence_number']
         constraints = [
             models.CheckConstraint(
-                check=models.Q(amount__gt=0),
+                condition=models.Q(amount__gt=0),
                 name='installment_amount_positive',
             ),
             models.UniqueConstraint(
