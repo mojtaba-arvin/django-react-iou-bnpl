@@ -1,7 +1,36 @@
-version: "3.8"
 services:
-  bnpl-api:
+
+  # Container for running backend tests in CI using the latest prebuilt image from Docker Hub.
+  # Speeds up the testing process by avoiding local builds.
+  bnpl-tests:
     image: mojtabaarvin/bnpl-backend:dev-latest
+    container_name: bnpl-tests
+    env_file:
+      - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=bnpl.settings.development
+      - DJANGO_ENV=development
+    command: >
+      mkdir -p /app/test_artifacts && \
+      pytest --junitxml=/app/test_artifacts/junit-report-local.xml \
+      --cov=./ --cov-report=xml:/app/test_artifacts/coverage-report.xml \
+      -r a --capture=no \
+      | tee /app/test_artifacts/test-execution.log
+    restart: "no"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - bnpl-db
+      - bnpl-redis
+    networks:
+      - bnpl-network
+
+  # Development container for bnpl-api built from source using Dockerfile.dev.
+  # Ensures latest local code changes are reflected without needing to push to Docker Hub.
+  bnpl-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
     container_name: bnpl-api
     env_file: .env
     environment:
@@ -68,8 +97,11 @@ services:
     networks:
       - bnpl-network
 
+  # Development container for Celery worker
   bnpl-worker:
-   image: mojtabaarvin/bnpl-backend:dev-latest
+   build:
+     context: ./backend
+     dockerfile: Dockerfile.dev
    container_name: bnpl-worker
    env_file:
      - .env
@@ -86,8 +118,11 @@ services:
    networks:
        - bnpl-network
 
+  # Development container for Celery beat
   bnpl-beat:
-   image: mojtabaarvin/bnpl-backend:dev-latest
+   build:
+     context: ./backend
+     dockerfile: Dockerfile.dev
    container_name: bnpl-beat
    env_file:
      - .env
@@ -133,29 +168,6 @@ services:
   #     - bnpl-frontend
   #   networks:
   #     - bnpl-network
-
-  bnpl-tests:
-     image: mojtabaarvin/bnpl-backend:dev-latest
-     container_name: bnpl-tests
-     env_file:
-       - .env
-     environment:
-       - DJANGO_SETTINGS_MODULE=bnpl.settings.development
-       - DJANGO_ENV=development
-     command: >
-        mkdir -p /app/test_artifacts && \
-        pytest --junitxml=/app/test_artifacts/junit-report-local.xml \
-        --cov=./ --cov-report=xml:/app/test_artifacts/coverage-report.xml \
-        -r a --capture=no \
-        | tee /app/test_artifacts/test-execution.log
-     restart: "no"
-     volumes:
-       - ./backend:/app
-     depends_on:
-       - bnpl-db
-       - bnpl-redis
-     networks:
-       - bnpl-network
 
 volumes:
   bnpl-db-data:
