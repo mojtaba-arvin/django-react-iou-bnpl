@@ -1,63 +1,103 @@
 name: Selective Tests (Backend + Frontend)
 
 on:
+  workflow_run:
+    workflows: ["Docker Image Build and Push"]
+    types: [completed]
   push:
     branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/tests.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/tests.yml'
 
 jobs:
-  detect-changes:
+  verify-image:
+    name: Verify Docker Image
+    if: ${{ github.event.workflow_run && github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     outputs:
-      backend_changed: ${{ steps.filter.outputs.backend }}
-      frontend_changed: ${{ steps.filter.outputs.frontend }}
-      ci_skipped: ${{ steps.skip_check.outputs.skip }}
+      image_sha: ${{ steps.get_sha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v3
+      - name: Get image SHA
+        id: get_sha
+        run: |
+          echo "sha=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
 
-      - name: Detect [ci skip]
+  test-orchestration:
+    name: Determine Test Requirements
+    runs-on: ubuntu-latest
+    outputs:
+      run_backend_tests: ${{ steps.decide.outputs.run_backend }}
+      run_frontend_tests: ${{ steps.decide.outputs.run_frontend }}
+      skip_ci: ${{ steps.skip_check.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Needed for change detection
+
+      - name: Check for [ci skip]
         id: skip_check
         run: |
-          if [[ "${{ github.event.head_commit.message || github.event.pull_request.title }}" == *"[ci skip]"* ]]; then
+          REGEX='\[ci[ _-]?skip\]'
+          COMMIT_MESSAGE="${{ github.event.head_commit.message || github.event.pull_request.title }}"
+      
+          if [[ "$COMMIT_MESSAGE" =~ $REGEX ]]; then
             echo "skip=true" >> $GITHUB_OUTPUT
           else
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Detect changes
-        id: filter
+      - name: Detect changed paths
         uses: dorny/paths-filter@v3
+        id: filter
         with:
           filters: |
             backend:
               - 'backend/**'
-              - '.github/workflows/*.yml'
-              - 'docker-compose*.yml'
             frontend:
               - 'frontend/**'
 
+      - name: Decide which tests to run
+        id: decide
+        run: |
+          # Always run tests if triggered by workflow_run (image update)
+          if [[ "${{ steps.filter.outputs.backend }}" == "true" || "${{ github.event_name }}" == "workflow_run" ]]; then
+            echo "run_backend=true" >> $GITHUB_OUTPUT
+          else
+            echo "run_backend=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [[ "${{ steps.filter.outputs.frontend }}" == "true" ]]; then
+            echo "run_frontend=true" >> $GITHUB_OUTPUT
+          else
+            echo "run_frontend=false" >> $GITHUB_OUTPUT
+          fi
+
   backend-tests:
-    needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.backend_changed == 'true' && needs.detect-changes.outputs.ci_skipped == 'false' }}
+    needs: [verify-image, test-orchestration]
+    if: ${{ needs.test-orchestration.outputs.run_backend_tests == 'true' && needs.test-orchestration.outputs.skip_ci == 'false' }}
     runs-on: ubuntu-latest
     env:
+      COMPOSE_PROJECT_NAME: bnpl-test-${{ github.run_id }}
       POSTGRES_DB: test_${{ github.run_id }}
       POSTGRES_USER: test_user
-      POSTGRES_PASSWORD: test_pass_${{ github.run_number }}
-      REDIS_PASSWORD: test_redis_${{ github.run_number }}
+      POSTGRES_PASSWORD: test_pass
+      REDIS_PASSWORD: test_redis
+      IMAGE_TAG: dev-${{ needs.verify-image.outputs.image_sha || github.sha }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Set up Docker
-        run: sudo systemctl start docker
-
-      - name: Create artifacts directory
-        run: mkdir -p backend/test_artifacts
-
-      - name: Pull required images
+      - name: Set up test environment
         run: |
-          docker-compose -f docker-compose.dev.yml pull --ignore-pull-failures bnpl-db bnpl-redis bnpl-tests
+          mkdir -p backend/test_artifacts
+          docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/bnpl-backend:dev-latest
 
       - name: Start dependencies
         run: |
@@ -67,7 +107,7 @@ jobs:
       - name: Execute tests with full logging
         run: |
           docker-compose -f docker-compose.dev.yml run --rm -v $(pwd)/backend/test_artifacts:/app/test_artifacts bnpl-tests \
-            bash -c "pytest --junitxml=/app/test_artifacts/junit-report-${{ github.run_number }}.xml \
+            sh -c "pytest --junitxml=/app/test_artifacts/junit-report-${{ github.run_number }}.xml \
                     --cov=./ --cov-report=xml:/app/test_artifacts/coverage-report.xml \
                     -r a \
                     --capture=no \
@@ -84,7 +124,7 @@ jobs:
           echo "warn_count=$WARN_COUNT" >> $GITHUB_ENV
 
       - name: Upload test artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: backend-test-artifacts-${{ github.run_number }}-${{ github.ref_name }}
           path: |
@@ -104,3 +144,10 @@ jobs:
       - name: Cleanup
         if: always()
         run: docker-compose -f docker-compose.dev.yml down -v
+
+  # frontend-tests:
+  #   needs: test-orchestration
+  #   if: ${{ needs.test-orchestration.outputs.run_frontend_tests == 'true' && needs.test-orchestration.outputs.skip_ci == 'false' }}
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - run: echo "Frontend tests will be implemented later"
