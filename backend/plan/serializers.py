@@ -1,35 +1,29 @@
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 from django.contrib.auth import get_user_model
-from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
 
-from customer.models import CustomerProfile
 from plan.constants import DEFAULT_INSTALLMENT_PERIOD
 from installment.models import InstallmentPlan, Installment
 from installment.serializers import InstallmentSerializer, InstallmentPlanSerializer
 from plan.models import Plan
 from plan.services.plan_creator import PlanCreatorService
+from plan.validators import PlanValidator
 
 User = get_user_model()
 
 
 class PlanSerializer(serializers.ModelSerializer):
     """
-    Serializer for creating/retrieving a Plan. Optionally supports assigning a list of customer IDs
-    to immediately create associated InstallmentPlan objects for those customers.
-    """
+    Serializer for creating and retrieving payment Plans.
 
-    customer_ids = serializers.ListField(
-        child=serializers.IntegerField(),
-        required=False,
-        write_only=True,
-        help_text=(
-            "Optional: List of customer IDs for whom installment plans should be "
-            "generated upon plan creation."
-        ),
-    )
+    Supports creating installment plans for customers either by providing:
+    - A single customer email (customer_email)
+    - A list of customer IDs (customer_ids)
+
+    Also allows setting a custom start date for the installment plan.
+    """
 
     installment_count = serializers.IntegerField(
         help_text="Number of installments. Example: 4"
@@ -40,28 +34,63 @@ class PlanSerializer(serializers.ModelSerializer):
         help_text="Installment interval in days. Example: 30"
     )
 
+    # write_only fields
+    start_date = serializers.DateField(
+        required=False,
+        default=date.today,
+        write_only=True,
+        help_text="Start date for the installment plan (defaults to today).Use this format: YYYY-MM-DD"
+    )
+    customer_email = serializers.EmailField(
+        required=False,
+        write_only=True,
+        help_text="Optional: Customer email for whom installment plan should be created."
+    )
+    customer_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        write_only=True,
+        help_text=(
+            "Optional: List of customer IDs for whom installment plans should be "
+            "generated upon plan creation."
+        ),
+    )
+
+    # read-only fields
     installments = serializers.SerializerMethodField()
     installment_plan = serializers.SerializerMethodField()
 
     class Meta:
         model = Plan
         fields = [
-            'id',
             'name',
             'total_amount',
             'installment_count',
             'installment_period',
+
+            # read-only fields
+            'id',
             'status',
-            'customer_ids',
             'installment_plan',
             'installments',
+
+            # write_only fields
+            'start_date',
+            'customer_email',
+            'customer_ids',
         ]
         read_only_fields = ['status']  # Status is read-only as all plans are active on creation.
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initializes the serializer and caches validated customer objects."""
+        """Initialize the serializer.
+
+        Sets up:
+        - _validated_customers: Cache for validated customer objects
+        - validator: PlanValidator instance for validation logic
+        """
         super().__init__(*args, **kwargs)
         self._validated_customers: Optional[List[User]] = None
+        self.validator = PlanValidator()
 
     def get_installments(self, plan: Plan) -> List[Dict[str, Any]]:
         """
@@ -110,42 +139,30 @@ class PlanSerializer(serializers.ModelSerializer):
         return InstallmentPlanSerializer(installment_plan).data
 
     def validate(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Validates the input data for creating a Plan.
+        """Validate plan creation data.
 
         Args:
-            data (Dict[str, Any]): The validated data from the request.
+            data: Input data for plan creation containing:
+                - start_date: Optional custom start date (defaults to today)
+                - customer_email: Optional customer email
+                - customer_ids: Optional list of customer IDs
 
         Returns:
-            Dict[str, Any]: The validated data, potentially with modifications.
+            Validated data dictionary
 
         Raises:
-            ValidationError: If customer IDs are provided and any are ineligible.
+            ValidationError: If any validation fails including:
+                - Invalid start date (in the past)
+                - Both customer_ids and customer_email provided
+                - Invalid customer IDs or email
         """
         request = self.context['request']
 
         if request.method.lower() == "post" and request.user.user_type == User.UserType.MERCHANT:
-            customer_ids = data.get("customer_ids")
-            if customer_ids:
-                eligible_customers_qs = User.objects.filter(
-                    id__in=customer_ids,
-                    user_type=User.UserType.CUSTOMER,
-                    customer_profile__score_status=CustomerProfile.ScoreStatus.APPROVED,
-                    customer_profile__is_active=True,
-                ).select_related("customer_profile")
 
-                eligible_ids = {user.id for user in eligible_customers_qs}
-                ineligible_ids = set(customer_ids) - eligible_ids
-
-                if ineligible_ids:
-                    raise ValidationError({
-                        "customer_ids": _(
-                            f"The following customer IDs are not eligible: {sorted(ineligible_ids)}"
-                        )
-                    })
-
-                # Cache validated customer objects to avoid re-querying
-                self._validated_customers = list(eligible_customers_qs)
+            data, customers = self.validator.validate(data, request)
+            # Cache validated customer objects to avoid re-querying
+            self._validated_customers = customers
 
         return data
 
@@ -169,5 +186,6 @@ class PlanSerializer(serializers.ModelSerializer):
             installment_count=validated_data['installment_count'],
             installment_period=validated_data.get('installment_period', DEFAULT_INSTALLMENT_PERIOD),
             customers=customers,
+            start_date=validated_data['start_date']
         )
         return service.execute()

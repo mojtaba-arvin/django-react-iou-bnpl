@@ -1,3 +1,4 @@
+from datetime import date
 from typing import List
 from django.db import transaction
 
@@ -16,7 +17,7 @@ class PlanCreatorService:
 
     def __init__(self, *, merchant: User, name: str, total_amount: float,
                  installment_count: int, installment_period: int = DEFAULT_INSTALLMENT_PERIOD,
-                 customers: List[User]):
+                 customers: List[User], start_date: date = date.today()):
         """Initialize the service with merchant, plan details, and customers.
 
         Args:
@@ -26,6 +27,7 @@ class PlanCreatorService:
             installment_count (int): The number of installments.
             installment_period (int): The period between installments in days (default is 30 days).
             customers (List[User]): The list of customers associated with the plan.
+            start_date (date): Start date for the installment plan (defaults to today).
         """
         self.merchant = merchant
         self.name = name
@@ -33,6 +35,7 @@ class PlanCreatorService:
         self.installment_count = installment_count
         self.installment_period = installment_period
         self.customers = customers
+        self.start_date = start_date
 
     def execute(self) -> Plan:
         """Create the plan and associated installment plans for the customers.
@@ -57,7 +60,11 @@ class PlanCreatorService:
 
             # Create InstallmentPlans for each customer
             installment_plans = [
-                InstallmentPlan(plan=plan, customer=customer)
+                InstallmentPlan(
+                    plan=plan,
+                    customer=customer,
+                    start_date=self.start_date
+                )
                 for customer in self.customers
             ]
 
