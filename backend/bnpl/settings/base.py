@@ -86,8 +86,9 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ),
     'EXCEPTION_HANDLER': 'core.utils.custom_drf_exception_handler.drf_exception_handler',
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "DEFAULT_PAGINATION_CLASS": "core.pagination.DrfPagination",
     "PAGE_SIZE": 5,
+    'MAX_PAGE_SIZE': 10,
 }
 
 # Security

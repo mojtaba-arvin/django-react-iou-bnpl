@@ -1,12 +1,13 @@
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework import serializers
 
 from plan.constants import DEFAULT_INSTALLMENT_PERIOD
-from installment.models import InstallmentPlan, Installment
-from installment.serializers import InstallmentSerializer, InstallmentPlanSerializer
+from installment.models import InstallmentPlan
+from installment.serializers import BaseInstallmentSerializer
 from plan.models import Plan
 from plan.services.plan_creator import PlanCreatorService
 from plan.validators import PlanValidator
@@ -14,17 +15,79 @@ from plan.validators import PlanValidator
 User = get_user_model()
 
 
-class PlanSerializer(serializers.ModelSerializer):
+class ProgressSerializer(serializers.Serializer):
+    """Serializer for calculating and representing payment progress metrics.
+
+    Attributes:
+        paid: Number of installments already paid.
+        total: Total number of installments in the plan.
+        percentage: Payment completion percentage (0-100).
+        next_due_date: Date of the next upcoming installment.
+        days_remaining: Days remaining until next payment is due.
     """
-    Serializer for creating and retrieving payment Plans.
 
-    Supports creating installment plans for customers either by providing:
-    - A single customer email (customer_email)
-    - A list of customer IDs (customer_ids)
+    paid = serializers.IntegerField(help_text="Number of installments paid")
+    total = serializers.IntegerField(help_text="Total number of installments")
+    percentage = serializers.FloatField(
+        help_text="Percentage of installments paid (0-100)"
+    )
+    next_due_date = serializers.DateField(
+        help_text="Next upcoming due date",
+        required=False
+    )
+    days_remaining = serializers.IntegerField(
+        help_text="Days remaining until next due date",
+        required=False
+    )
 
-    Also allows setting a custom start date for the installment plan.
-    """
+    def to_representation(self, instance: InstallmentPlan) -> Dict[str, Optional[int]]:
+        """Transform the installment plan instance into progress metrics.
 
+        Args:
+            instance: The InstallmentPlan instance to calculate progress for.
+
+        Returns:
+            Dictionary containing:
+                - paid: Count of paid installments
+                - total: Total installments
+                - percentage: Completion percentage
+                - next_due_date: Next due date (if pending installments exist)
+                - days_remaining: Days until next payment (if applicable)
+        """
+        paid = instance.installments.filter(status='paid').count()
+        total = instance.installments.count()
+        percentage = (paid / total * 100) if total else 0
+
+        next_installment = instance.installments.filter(
+            status='pending'
+        ).order_by('due_date').first()
+
+        representation = {
+            'paid': paid,
+            'total': total,
+            'percentage': percentage,
+        }
+
+        if next_installment:
+            representation.update({
+                'next_due_date': next_installment.due_date,
+                'days_remaining': (next_installment.due_date - timezone.now().date()).days
+            })
+
+        return representation
+
+
+class InstallmentPlanCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating an installment plan (merchant only).
+     """
+
+    name = serializers.CharField(
+        max_length=128
+    )
+    total_amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2
+    )
     installment_count = serializers.IntegerField(
         help_text="Number of installments. Example: 4"
     )
@@ -33,53 +96,30 @@ class PlanSerializer(serializers.ModelSerializer):
         default=DEFAULT_INSTALLMENT_PERIOD,
         help_text="Installment interval in days. Example: 30"
     )
-
-    # write_only fields
+    customer_email = serializers.EmailField(
+        write_only=True,
+        help_text="Customer email for whom installment plan should be created."
+    )
     start_date = serializers.DateField(
         required=False,
         default=date.today,
         write_only=True,
         help_text="Start date for the installment plan (defaults to today).Use this format: YYYY-MM-DD"
     )
-    customer_email = serializers.EmailField(
-        required=False,
-        write_only=True,
-        help_text="Optional: Customer email for whom installment plan should be created."
-    )
-    customer_ids = serializers.ListField(
-        child=serializers.IntegerField(),
-        required=False,
-        write_only=True,
-        help_text=(
-            "Optional: List of customer IDs for whom installment plans should be "
-            "generated upon plan creation."
-        ),
-    )
-
-    # read-only fields
-    installments = serializers.SerializerMethodField()
-    installment_plan = serializers.SerializerMethodField()
 
     class Meta:
-        model = Plan
+        model = InstallmentPlan
         fields = [
+            # to create template plan
             'name',
             'total_amount',
             'installment_count',
             'installment_period',
 
-            # read-only fields
-            'id',
-            'status',
-            'installment_plan',
-            'installments',
-
-            # write_only fields
-            'start_date',
+            # to assign installment plan to specific customer
             'customer_email',
-            'customer_ids',
+            'start_date',
         ]
-        read_only_fields = ['status']  # Status is read-only as all plans are active on creation.
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize the serializer.
@@ -92,52 +132,6 @@ class PlanSerializer(serializers.ModelSerializer):
         self._validated_customers: Optional[List[User]] = None
         self.validator = PlanValidator()
 
-    def get_installments(self, plan: Plan) -> List[Dict[str, Any]]:
-        """
-        Retrieves the installments associated with a plan for the authenticated customer.
-
-        Args:
-            plan (Plan): The plan for which installments are fetched.
-
-        Returns:
-            List[Dict[str, Any]]: A list of serialized installments for the plan.
-        """
-        request = self.context['request']
-        user = request.user
-
-        if not user.is_authenticated or user.user_type != User.UserType.CUSTOMER:
-            return []
-
-        installments = Installment.objects.filter(
-            installment_plan__plan=plan,
-            installment_plan__customer=user,
-        ).order_by('sequence_number')
-
-        return InstallmentSerializer(installments, many=True).data
-
-    def get_installment_plan(self, plan: Plan) -> Dict[str, Any]:
-        """
-        Retrieves the installment plan associated with a plan for the authenticated customer.
-
-        Args:
-            plan (Plan): The plan for which the installment plan is fetched.
-
-        Returns:
-            Dict[str, Any]: The serialized installment plan for the customer.
-        """
-        request = self.context['request']
-        user = request.user
-
-        if not user.is_authenticated or user.user_type != User.UserType.CUSTOMER:
-            return {}
-
-        installment_plan = InstallmentPlan.objects.get(
-            plan=plan,
-            customer=user,
-        )
-
-        return InstallmentPlanSerializer(installment_plan).data
-
     def validate(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Validate plan creation data.
 
@@ -145,7 +139,6 @@ class PlanSerializer(serializers.ModelSerializer):
             data: Input data for plan creation containing:
                 - start_date: Optional custom start date (defaults to today)
                 - customer_email: Optional customer email
-                - customer_ids: Optional list of customer IDs
 
         Returns:
             Validated data dictionary
@@ -153,22 +146,19 @@ class PlanSerializer(serializers.ModelSerializer):
         Raises:
             ValidationError: If any validation fails including:
                 - Invalid start date (in the past)
-                - Both customer_ids and customer_email provided
-                - Invalid customer IDs or email
+                - Invalid customer email
         """
         request = self.context['request']
 
-        if request.method.lower() == "post" and request.user.user_type == User.UserType.MERCHANT:
-
-            data, customers = self.validator.validate(data, request)
-            # Cache validated customer objects to avoid re-querying
-            self._validated_customers = customers
+        data, customers = self.validator.validate(data, request)
+        # Cache validated customer objects to avoid re-querying
+        self._validated_customers = customers
 
         return data
 
     def create(self, validated_data: Dict[str, Any]) -> Plan:
         """
-        Creates a Plan instance and associated InstallmentPlan objects, if customer IDs are provided.
+        Creates a Plan instance and associated InstallmentPlan object, if customer_email is provided.
 
         Args:
             validated_data (Dict[str, Any]): The validated data for creating the plan.
@@ -186,6 +176,97 @@ class PlanSerializer(serializers.ModelSerializer):
             installment_count=validated_data['installment_count'],
             installment_period=validated_data.get('installment_period', DEFAULT_INSTALLMENT_PERIOD),
             customers=customers,
-            start_date=validated_data['start_date']
+            start_date=validated_data['start_date'],
+            plan_status=Plan.Status.ACTIVE
         )
         return service.execute()
+
+
+class TemplatePlanSerializer(serializers.ModelSerializer):
+    """Serializer for Plan model with merchant information.
+    """
+
+    class Meta:
+        """Metadata options for TemplatePlanSerializer."""
+
+        model = Plan
+        fields = [
+            'id',
+            'name',
+            'total_amount',
+            'installment_count',
+            'installment_period',
+        ]
+        read_only_fields = fields
+
+
+class InstallmentPlanDetailSerializer(serializers.ModelSerializer):
+    """Comprehensive serializer for InstallmentPlan with related data.
+
+    Combines:
+        - Core installment plan fields
+        - Template plan details
+        - Payment progress metrics
+        - Individual installments
+        - Context-sensitive customer information
+    """
+    progress = ProgressSerializer(
+        source='*',
+        help_text="Payment progress metrics and calculations"
+    )
+    template_plan = TemplatePlanSerializer(
+        source='plan',
+        help_text="Details of the template plan this is based on"
+    )
+    installments = BaseInstallmentSerializer(many=True, source='ordered_installments')
+    customer_email = serializers.SerializerMethodField(
+        help_text="Email of the customer (visible to merchants only)"
+    )
+
+    class Meta:
+        """Metadata options for InstallmentPlanDetailSerializer."""
+
+        model = InstallmentPlan
+        fields = [
+            'id',
+            'start_date',
+            'status',
+            'customer_email',
+            'template_plan',
+            'progress',
+            'installments',
+        ]
+        read_only_fields = fields
+
+    def get_customer_email(self, obj: InstallmentPlan) -> Optional[str]:
+        """Get customer email if request user is a merchant.
+
+        Args:
+            obj: The InstallmentPlan instance being serialized
+
+        Returns:
+            str: Customer email if viewer is merchant, None otherwise
+        """
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            if request.user.user_type == User.UserType.MERCHANT:
+                return obj.customer.email
+        return None
+
+    def to_representation(self, instance: InstallmentPlan) -> Dict[str, Union[str, int, float, Dict]]:
+        """Final representation with context-sensitive field removal.
+
+        Args:
+            instance: The InstallmentPlan instance to serialize
+
+        Returns:
+            Dictionary containing all serialized fields, with customer_email
+            removed if not applicable
+        """
+        representation = super().to_representation(instance)
+
+        # Remove customer_email field entirely if None
+        if representation['customer_email'] is None:
+            representation.pop('customer_email', None)
+
+        return representation

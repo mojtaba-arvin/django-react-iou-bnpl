@@ -17,7 +17,8 @@ class PlanCreatorService:
 
     def __init__(self, *, merchant: User, name: str, total_amount: float,
                  installment_count: int, installment_period: int = DEFAULT_INSTALLMENT_PERIOD,
-                 customers: List[User], start_date: date = date.today()):
+                 customers: List[User], start_date: date = date.today(),
+                 plan_status: str = Plan.Status.ACTIVE):
         """Initialize the service with merchant, plan details, and customers.
 
         Args:
@@ -28,6 +29,7 @@ class PlanCreatorService:
             installment_period (int): The period between installments in days (default is 30 days).
             customers (List[User]): The list of customers associated with the plan.
             start_date (date): Start date for the installment plan (defaults to today).
+            plan_status (str): The status of the plan (default is active).
         """
         self.merchant = merchant
         self.name = name
@@ -36,6 +38,7 @@ class PlanCreatorService:
         self.installment_period = installment_period
         self.customers = customers
         self.start_date = start_date
+        self.plan_status = plan_status
 
     def execute(self) -> Plan:
         """Create the plan and associated installment plans for the customers.
@@ -55,7 +58,7 @@ class PlanCreatorService:
                 total_amount=self.total_amount,
                 installment_count=self.installment_count,
                 installment_period=self.installment_period,
-                status=Plan.Status.ACTIVE,
+                status=self.plan_status,
             )
 
             # Create InstallmentPlans for each customer

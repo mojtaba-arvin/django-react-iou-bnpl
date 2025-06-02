@@ -36,6 +36,54 @@ class StartDateValidator(BaseValidator):
         return data
 
 
+class TotalAmountValidator(BaseValidator):
+    """Validator for installment plan total amount."""
+
+    def validate(self, data: Dict, request: Request) -> Dict:
+        """Validate total amount is a positive number.
+
+        Args:
+            data: Input data containing optional start_date
+            request: DRF request object
+
+        Returns:
+            Validated data
+
+        Raises:
+            ValidationError: If total_amount is not a positive number
+        """
+        total_amount = data.get('total_amount')
+        if total_amount is None or total_amount <= 0:
+            raise ValidationError({
+                'total_amount': _('Total amount must be a positive number.')
+            })
+        return data
+
+
+class InstallmentCountValidator(BaseValidator):
+    """Validator for installment plan installments count."""
+
+    def validate(self, data: Dict, request: Request) -> Dict:
+        """Validate installments count is a positive number.
+
+        Args:
+            data: Input data containing optional start_date
+            request: DRF request object
+
+        Returns:
+            Validated data
+
+        Raises:
+            ValidationError: If installment_count is not a positive number
+        """
+        installment_count = data.get('installment_count')
+        if installment_count is None or installment_count <= 0:
+            raise ValidationError({
+                'installment_count': _('Installment count must be a positive integer.')
+            })
+        return data
+
+
 class CustomerValidator(BaseValidator):
     """Validator for mutual exclusivity of customer identifiers."""
 
@@ -143,10 +191,14 @@ class PlanValidator:
         """Initialize with required validators."""
         self.validators = [
             StartDateValidator(),
-            CustomerValidator(),
+            TotalAmountValidator(),
+            InstallmentCountValidator(),
+            # CustomerValidator(),  # TODO(mojtaba - 2025-06-02): check if needed to support customer_ids and customer_email together
         ]
+
+        # to get customer instance(s) after run validations
         self.customer_validators = [
-            CustomerIdsValidator(),
+            # CustomerIdsValidator(),  # TODO(mojtaba - 2025-06-02): check if needed to support customer_ids
             CustomerEmailValidator(),
         ]
 

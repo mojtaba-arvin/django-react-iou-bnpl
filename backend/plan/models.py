@@ -66,6 +66,14 @@ class Plan(AbstractTimestampedModel):
         if self.total_amount <= 0:
             raise ValidationError(_('Total amount must be greater than zero.'))
 
+        # Ensure amounts are properly rounded
+        self.total_amount = round(self.total_amount, 2)
+
+    def save(self, *args, **kwargs):
+        """Override save to ensure validation."""
+        self.full_clean()
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = _('plan')
         verbose_name_plural = _('plans')

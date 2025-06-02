@@ -1,6 +1,6 @@
 from django.urls import path
-from plan.views import PlanListCreateAPIView
+from plan.views import InstallmentPlanListCreateAPIView
 
 urlpatterns = [
-    path('', PlanListCreateAPIView.as_view(), name='plan_list_create_api'),
+    path('', InstallmentPlanListCreateAPIView.as_view(), name='installment_plan_list_create_api'),
 ]
