@@ -1,12 +1,12 @@
 from typing import Any
 from django.utils.translation import gettext_lazy as _
 from rest_framework import generics, permissions, status
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.request import Request
 from rest_framework.response import Response
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
+from core.pagination import DrfPagination
 from core.permissions import IsMerchant
 from customer.selectors import get_eligible_customers_for_merchant
 from customer.serializers import EligibleCustomerSerializer
@@ -21,7 +21,7 @@ class EligibleCustomerListAPIView(StandardApiResponseMixin, generics.ListAPIView
 
     serializer_class = EligibleCustomerSerializer
     permission_classes = [permissions.IsAuthenticated, IsMerchant]
-    pagination_class = PageNumberPagination
+    pagination_class = DrfPagination
 
     def get_queryset(self):
         return get_eligible_customers_for_merchant()
