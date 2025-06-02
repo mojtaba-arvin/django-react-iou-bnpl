@@ -108,5 +108,5 @@ class CustomerListingAPITest(APITestCase):
 
         response = self.client.get(f"{self.url}?page=1&page_size=1")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data['data']), expected_count)
+        self.assertEqual(len(response.data['data']), 1)
         self.assertEqual(response.data['pagination']['total_items'], expected_count)
