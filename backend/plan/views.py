@@ -10,6 +10,7 @@ from drf_yasg import openapi
 
 from django.contrib.auth import get_user_model
 
+from core.exceptions import BusinessException
 from core.pagination import DrfPagination
 from core.permissions import IsMerchantForPostOnly, IsVerifiedMerchantForPostOnly, IsCustomerOrMerchant
 from core.utils.response_schemas import api_error_schema, build_success_response_schema, build_error_schema
@@ -185,8 +186,13 @@ class InstallmentPlanDetailAPIView(
                 ),
             ),
             status.HTTP_404_NOT_FOUND: openapi.Response(
-                description=str(_("Installment plan not found")),
-                schema=api_error_schema,
+                description=str(_("Not found")),
+                schema=build_error_schema(
+                    messages=[
+                        str(_("Installment plan not found")),
+                        str(_("Installment plan no longer available")),
+                    ]
+                ),
             ),
         },
     )
@@ -194,6 +200,17 @@ class InstallmentPlanDetailAPIView(
         """Handles GET requests to retrieve the details of a specific installment plan.
     """
         installment_plan = self.get_object_with_permissions(pk=pk)
+
+        if request.user.user_type == User.UserType.CUSTOMER:
+            if installment_plan.status not in [
+                InstallmentPlan.Status.ACTIVE,
+                InstallmentPlan.Status.COMPLETED
+            ]:
+                raise BusinessException(
+                    message = str(_("Installment plan no longer available")),
+                    status_code = status.HTTP_404_NOT_FOUND
+                )
+
         serializer = self.get_serializer(installment_plan)
         return self.success_response(
             message=str(_("Successfully retrieved installment plan details.")),

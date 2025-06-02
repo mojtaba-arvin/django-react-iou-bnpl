@@ -8,7 +8,6 @@ from rest_framework import status
 from core.exceptions import BusinessException
 from core.logging.logger import get_logger
 from installment.models import Installment, InstallmentPlan
-from plan.models import Plan
 
 User = get_user_model()
 logger = get_logger(__name__)
@@ -103,7 +102,9 @@ class InstallmentPlanQueryService:
                 InstallmentPlan.Status.ACTIVE,
                 InstallmentPlan.Status.COMPLETED
             ],
-            plan__status=Plan.Status.ACTIVE,
+            # We intentionally skip filtering by plan__status=Plan.Status.ACTIVE
+            # because archived plans can still have valid active/completed installment plans
+            # plan__status=Plan.Status.ACTIVE,
         ).select_related(
             'plan',  # Include all template plan details
             'plan__merchant'  # Include merchant details
