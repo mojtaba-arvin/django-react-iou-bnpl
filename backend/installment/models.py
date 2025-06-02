@@ -1,6 +1,7 @@
 from datetime import date
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from core.models import AbstractTimestampedModel
@@ -14,9 +15,19 @@ class InstallmentPlan(AbstractTimestampedModel):
 
     class Status(models.TextChoices):
         """Enumeration of possible installment plan statuses."""
-        ACTIVE = 'active', _('Active')
-        COMPLETED = 'completed', _('Completed')
-        DEFAULTED = 'defaulted', _('Defaulted')
+        ACTIVE = 'active', _('Active')           # Plan in progress
+        COMPLETED = 'completed', _('Completed')  # Fully paid
+        DEFAULTED = 'defaulted', _('Defaulted')  # One or more installments overdue
+        """
+        TODO: Use Better State Flow
+        pending ──▶ active ──▶ completed
+           │           │
+           ▼           ▼
+        cancelled   defaulted
+                       │
+                       ▼
+                   refunded
+        """
 
     plan: models.ForeignKey = models.ForeignKey(
         Plan,
@@ -102,6 +113,19 @@ class Installment(AbstractTimestampedModel):
     def __str__(self) -> str:
         """Return a readable identifier for the installment."""
         return f"Installment #{self.sequence_number}"
+
+    def clean(self):
+        """Validate the installment amount."""
+        if self.amount <= 0:
+            raise ValidationError(_('Installment amount must be positive.'))
+
+        # Ensure amount is properly rounded to 2 decimal places
+        self.amount = round(self.amount, 2)
+
+    def save(self, *args, **kwargs):
+        """Override save to ensure validation."""
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = _('installment')
