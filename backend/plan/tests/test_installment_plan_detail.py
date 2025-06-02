@@ -3,8 +3,10 @@ from rest_framework.test import APITestCase
 from rest_framework import status
 
 from customer.tests.factories import CustomerUserFactory
+from installment.models import InstallmentPlan
 from merchant.tests.factories import MerchantUserFactory
 from installment.tests.factories import InstallmentPlanFactory
+from plan.models import Plan
 from plan.tests.factories import PlanFactory
 from installment.utils.signal_control import disable_installment_creation_signal
 
@@ -26,6 +28,9 @@ class InstallmentPlanDetailAPIViewTest(APITestCase):
         with disable_installment_creation_signal():
             self.installment_plan = InstallmentPlanFactory(
                 plan=self.plan, customer=self.customer
+            )
+            self.defaulted_installment_plan = InstallmentPlanFactory(
+                plan=self.plan, customer=self.customer, status=InstallmentPlan.Status.DEFAULTED
             )
 
         self.detail_url = lambda pk: reverse("installment_plan_detail_api", kwargs={"pk": pk})
@@ -67,3 +72,30 @@ class InstallmentPlanDetailAPIViewTest(APITestCase):
         """Test unauthenticated access is denied."""
         response = self.client.get(self.detail_url(self.installment_plan.pk))
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_customer_cannot_retrieve_defaulted_installment_plan(self):
+        """Test customer cannot access defaulted installment plan."""
+        self.client.force_authenticate(user=self.customer)
+        response = self.client.get(self.detail_url(self.defaulted_installment_plan.pk))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.data["message"], "Installment plan no longer available")
+
+    def test_customer_can_retrieve_own_installment_plan_even_template_is_not_active(self):
+        """Test that a customer can access their own installment plan,
+        even if the associated template plan is archived.
+        The active status of the template plan only affects the creation of
+        the installment plan, not the ability of the customer to access it.
+        """
+        plan = PlanFactory(merchant=self.merchant)
+        with disable_installment_creation_signal():
+            self.installment_plan = InstallmentPlanFactory(
+                plan=self.plan, customer=self.customer
+            )
+
+        # Change the status of the template plan to 'ARCHIVED' after the installment plan has been created
+        plan.status = Plan.Status.ARCHIVED
+        plan.save()
+        self.client.force_authenticate(user=self.customer)
+        response = self.client.get(self.detail_url(self.installment_plan.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["data"]["id"], self.installment_plan.pk)
