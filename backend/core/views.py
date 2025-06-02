@@ -1,6 +1,7 @@
-from django.shortcuts import get_object_or_404
-from rest_framework import generics
 from typing import Any
+from rest_framework import generics
+from rest_framework.exceptions import NotFound
+from django.utils.translation import gettext_lazy as _
 
 
 class CheckObjectPermissionAPIView(generics.GenericAPIView):
@@ -11,6 +12,8 @@ class CheckObjectPermissionAPIView(generics.GenericAPIView):
     Use this as a base class when you want to centralize permission checks
     for object retrieval.
     """
+
+    custom_not_found_message = str(_("Not found"))  # overwrite it in view
 
     def get_object_with_permissions(self, **kwargs: Any) -> Any:
         """
@@ -23,10 +26,13 @@ class CheckObjectPermissionAPIView(generics.GenericAPIView):
             The object instance if found and permissions pass.
 
         Raises:
-            Http404: If the object is not found.
+            NotFound: If the object is not found.
             PermissionDenied: If object-level permissions fail.
         """
-        obj = get_object_or_404(self.get_queryset(), **kwargs)
+        try:
+            obj = self.get_queryset().get(**kwargs)
+        except self.get_queryset().model.DoesNotExist:
+            raise NotFound(self.custom_not_found_message)
         self.check_object_permissions(self.request, obj)
         return obj
 

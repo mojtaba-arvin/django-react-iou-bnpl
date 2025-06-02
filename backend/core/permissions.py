@@ -7,6 +7,19 @@ from rest_framework.views import View
 User = get_user_model()
 
 
+class IsCustomer(permissions.BasePermission):
+    """
+    Allows access only to authenticated users with the Customer role.
+    """
+    message = _("User account is not a Customer.")
+
+    def has_permission(self, request: Request, view: View) -> bool:
+        return (
+            request.user.is_authenticated and
+            getattr(request.user, "user_type", None) == User.UserType.CUSTOMER
+        )
+
+
 class IsMerchant(permissions.BasePermission):
     """
     Allows access only to authenticated users with the Merchant role.
@@ -18,6 +31,17 @@ class IsMerchant(permissions.BasePermission):
             request.user.is_authenticated and
             getattr(request.user, "user_type", None) == User.UserType.MERCHANT
         )
+
+
+class IsCustomerOrMerchant(permissions.BasePermission):
+    """
+    Allows access only to users with user_type 'customer' or 'merchant'.
+    Prevents access by future user types unless explicitly allowed.
+    """
+    message = _("Access is allowed only for customer or merchant accounts.")
+
+    def has_permission(self, request, view):
+        return getattr(request.user, "user_type", None) in [User.UserType.CUSTOMER, User.UserType.MERCHANT]
 
 
 class IsMerchantForPostOnly(permissions.BasePermission):
