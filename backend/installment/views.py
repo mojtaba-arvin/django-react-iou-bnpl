@@ -187,7 +187,6 @@ class InstallmentListAPIView(StandardApiResponseMixin, generics.ListAPIView):
     Supports:
     - Filtering by status (upcoming/past)
     - Pagination
-    - Progress information for each plan
     """
 
     serializer_class = CustomerFacingInstallmentSerializer

@@ -165,30 +165,30 @@ Open: http://localhost:8000/swagger/
 ---
 
 #### Installments and Plans
+
+`GET /api/installments/` — list installments with filtering upcoming/past (owner customer-only access)
+
 `POST /api/installments/{id}/pay/` — Pay for a specific installment (owner customer-only access)
 
-
-`POST /api/plans/` — Create a new payment plan (verified merchant-only access)
+`POST /api/plans/` — Create a new installment plan (verified merchant-only access)
 
  **Features:**
-
-- Supports assigning a list of customer IDs at creation time.
-- Automatically generates related InstallmentPlan objects for each customer.
 - Installments are created in `bulk`, improving performance and scalability.
 - A thread-local flag is used to skip signal-based creation, preventing redundant processing during batch operations.
 
-`GET /api/plans/` — List all existing plans for both customers and merchants access
+`GET /api/plans/` — List all existing installment plans for both customers and merchants access
 
 **Customer view:**
 
-- Includes the InstallmentPlan details per plan associated to the customer.
-- Includes the **list of installments** of each plan for use with the pay endpoint.
+- Lists only installment plans associated to the customer.
 
 **Merchant view:**
 
-- Lists only plans created by the current merchant (i.e., templates).
-- **TODO:** needs to develop an API endpoint to list all customers who have been assigned an `InstallmentPlan` based on a specific `Plan` template (`/api/plans/{plan_id}/customers/`)
-- **TODO:** needs to develop an API endpoint to allow merchants to view all individual installments under a specific `InstallmentPlan` to track payment statuses, send reminders, or analyze repayment behaviors.
+- Lists only installment plans created by the current merchant.
+- includes customer_email field
+
+`GET /api/plans/{id}/` — retrieve the details of a specific installment plan with object-level access for customers and merchants
+
 ---
 
 #### Analytics
