@@ -1,0 +1,5 @@
+packages:
+  - "shared"
+  - "shell"
+  - "customer-app"
+  - "merchant-app"

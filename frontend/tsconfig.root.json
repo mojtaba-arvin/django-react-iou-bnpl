@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "es5",
+    "module": "esnext",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "moduleResolution": "Node",
+    "baseUrl": ".",
+    "paths": {
+      "@bnpl/shared": ["shared/src"],
+      "@bnpl/shared/*": ["shared/src/*"]
+    },
+    "types": [
+      "react",
+      "react-dom",
+      "react-admin",
+      // dev
+      "jest",
+      "@testing-library/jest-dom"
+    ],
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "forceConsistentCasingInFileNames": true,
+    // dev
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "isolatedModules": true // Important for Jest
+  },
+  "exclude": ["node_modules"]
+}
