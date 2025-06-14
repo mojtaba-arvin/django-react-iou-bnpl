@@ -1,0 +1,18 @@
+{
+  "name": "@bnpl/merchant-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "webpack serve --env standalone=false --config webpack.config.js",
+    "build": "webpack --env standalone=false --config webpack.config.js",
+    "dev:standalone": "webpack serve --env standalone=true --config webpack.config.js",
+    "build:standalone": "webpack --env standalone=true --config webpack.config.js",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "packageManager": "pnpm@10.11.1",
+  "dependencies": {
+    "@bnpl/shared": "workspace:*"
+  },
+  "devDependencies": {}
+}
