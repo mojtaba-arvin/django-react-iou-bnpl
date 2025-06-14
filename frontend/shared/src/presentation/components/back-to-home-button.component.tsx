@@ -1,6 +1,6 @@
 import { Button } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { useTranslate } from "react-admin";
+import { useTranslate } from 'react-admin';
 
 interface HomeButtonProps {
   onClick: () => void;
