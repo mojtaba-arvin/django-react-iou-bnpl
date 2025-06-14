@@ -25,60 +25,36 @@ interface InstallmentPreview {
 export const PlanCreate: React.FC = () => {
   const translate = useTranslate();
   const [installmentPreview, setInstallmentPreview] = useState<InstallmentPreview[]>([]);
-  const [formData, setFormData] = useState({
-    total_amount: 0,
-    installment_count: 0,
-    installment_period: 30,
-    start_date: new Date().toISOString().split('T')[0],
-  });
-
-  useEffect(() => {
-    if (
-      formData.total_amount > 0 &&
-      formData.installment_count > 0 &&
-      formData.installment_period > 0 &&
-      formData.start_date
-    ) {
-      const preview = calculateInstallments(
-        formData.total_amount.toString(),
-        formData.installment_count,
-        formData.installment_period,
-        formData.start_date
-      );
-      setInstallmentPreview(
-        preview.map(item => ({
-          ...item,
-          amount: Number(item.amount),
-        }))
-      );
-    } else {
-      setInstallmentPreview([]);
-    }
-  }, [formData]);
 
   return (
     <Create>
       <SimpleForm>
         <FormDataConsumer>
-          {({ formData: currentFormData }) => {
-            // Explicitly type currentFormData to avoid unsafe any assignment
-            type FormFields = {
-              total_amount?: number;
-              installment_count?: number;
-              installment_period?: number;
-              start_date?: string;
-            };
-            const safeFormData = currentFormData as FormFields;
+          {({ formData }) => {
+            useEffect(() => {
+              if (
+                formData.total_amount > 0 &&
+                formData.installment_count > 0 &&
+                formData.installment_period > 0 &&
+                formData.start_date
+              ) {
+                const preview = calculateInstallments(
+                  formData.total_amount.toString(),
+                  formData.installment_count,
+                  formData.installment_period,
+                  formData.start_date
+                );
+                setInstallmentPreview(
+                  preview.map(item => ({
+                    ...item,
+                    amount: Number(item.amount),
+                  }))
+                );
+              } else {
+                setInstallmentPreview([]);
+              }
+            }, [formData.total_amount, formData.installment_count, formData.installment_period, formData.start_date]);
 
-            // Update our formData state when the form changes
-            if (JSON.stringify(safeFormData) !== JSON.stringify(formData)) {
-              setFormData({
-                total_amount: safeFormData.total_amount ?? 0,
-                installment_count: safeFormData.installment_count ?? 0,
-                installment_period: safeFormData.installment_period ?? 30,
-                start_date: safeFormData.start_date ?? new Date().toISOString().split('T')[0],
-              });
-            }
             return null;
           }}
         </FormDataConsumer>
