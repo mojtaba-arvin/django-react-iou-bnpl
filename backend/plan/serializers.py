@@ -1,11 +1,13 @@
 from datetime import date
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import serializers
+from django.utils.translation import gettext_lazy as _
+from django.core.validators import MinValueValidator
 
-from plan.constants import DEFAULT_INSTALLMENT_PERIOD
+from plan.constants import DEFAULT_INSTALLMENT_PERIOD, MAX_INSTALLMENT_COUNT, MIN_INSTALLMENT_COUNT, MIN_PLAN_AMOUNT
 from installment.models import InstallmentPlan
 from installment.serializers import BaseInstallmentSerializer
 from plan.models import Plan
@@ -86,10 +88,22 @@ class InstallmentPlanCreateSerializer(serializers.ModelSerializer):
     )
     total_amount = serializers.DecimalField(
         max_digits=12,
-        decimal_places=2
+        decimal_places=2,
+        validators=[
+            MinValueValidator(
+                MIN_PLAN_AMOUNT,
+                message=_('Amount must be ≥ {min} USD.').format(min=MIN_PLAN_AMOUNT)
+            )
+        ]
     )
     installment_count = serializers.IntegerField(
-        help_text="Number of installments. Example: 4"
+        help_text="Number of installments. Example: 4",
+        max_value=MAX_INSTALLMENT_COUNT,
+        min_value=MIN_INSTALLMENT_COUNT,
+        error_messages={
+            'max_value': _('Maximum number of installments is {max}.').format(max=MAX_INSTALLMENT_COUNT),
+            'min_value': _('Minimum number of installments is {min}.').format(min=MIN_INSTALLMENT_COUNT)
+        }
     )
     installment_period = serializers.IntegerField(
         required=False,
@@ -110,7 +124,9 @@ class InstallmentPlanCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = InstallmentPlan
         fields = [
-            # to create template plan
+            'id',
+
+            # to create a template plan
             'name',
             'total_amount',
             'installment_count',
@@ -125,11 +141,11 @@ class InstallmentPlanCreateSerializer(serializers.ModelSerializer):
         """Initialize the serializer.
 
         Sets up:
-        - _validated_customers: Cache for validated customer objects
+        - _validated_customer: Cache for validated customer object
         - validator: PlanValidator instance for validation logic
         """
         super().__init__(*args, **kwargs)
-        self._validated_customers: Optional[List[User]] = None
+        self._validated_customer: Optional[User] = None
         self.validator = PlanValidator()
 
     def validate(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -150,15 +166,15 @@ class InstallmentPlanCreateSerializer(serializers.ModelSerializer):
         """
         request = self.context['request']
 
-        data, customers = self.validator.validate(data, request)
-        # Cache validated customer objects to avoid re-querying
-        self._validated_customers = customers
+        data, customer = self.validator.validate(data, request)
+        # Cache validated the customer object to avoid re-querying
+        self._validated_customer = customer
 
         return data
 
-    def create(self, validated_data: Dict[str, Any]) -> Plan:
+    def create(self, validated_data: Dict[str, Any]) -> InstallmentPlan:
         """
-        Creates a Plan instance and associated InstallmentPlan object, if customer_email is provided.
+        Creates a Plan instance and associated InstallmentPlan object by customer_email.
 
         Args:
             validated_data (Dict[str, Any]): The validated data for creating the plan.
@@ -167,7 +183,7 @@ class InstallmentPlanCreateSerializer(serializers.ModelSerializer):
             Plan: The newly created plan instance.
         """
         # Use cached customer objects from validate() to avoid re-querying
-        customers = self._validated_customers or []
+        customer = self._validated_customer
 
         service = PlanCreatorService(
             merchant=self.context['request'].user,
@@ -175,7 +191,7 @@ class InstallmentPlanCreateSerializer(serializers.ModelSerializer):
             total_amount=validated_data['total_amount'],
             installment_count=validated_data['installment_count'],
             installment_period=validated_data.get('installment_period', DEFAULT_INSTALLMENT_PERIOD),
-            customers=customers,
+            customer=customer,
             start_date=validated_data['start_date'],
             plan_status=Plan.Status.ACTIVE
         )

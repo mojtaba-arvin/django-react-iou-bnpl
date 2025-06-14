@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
@@ -153,7 +153,7 @@ class CustomerIdsValidator(BaseValidator):
 class CustomerEmailValidator(BaseValidator):
     """Validator for customer email."""
 
-    def validate(self, data: Dict, request: Request) -> List[User]:
+    def validate(self, data: Dict, request: Request) -> Optional[User]:
         """Validate and fetch customer by email.
 
         Args:
@@ -168,16 +168,15 @@ class CustomerEmailValidator(BaseValidator):
         """
         customer_email = data.get("customer_email")
         if not customer_email:
-            return []
+            return None
 
         try:
-            customer = User.objects.get(
+            return User.objects.get(
                 email=customer_email,
                 user_type=User.UserType.CUSTOMER,
                 customer_profile__score_status=CustomerProfile.ScoreStatus.APPROVED,
                 customer_profile__is_active=True,
             )
-            return [customer]
         except User.DoesNotExist:
             raise ValidationError({
                 "customer_email": _("No eligible customer found with this email.")
@@ -197,10 +196,10 @@ class PlanValidator:
         ]
 
         # to get customer instance(s) after run validations
-        self.customer_validators = [
-            # CustomerIdsValidator(),  # TODO(mojtaba - 2025-06-02): check if needed to support customer_ids
-            CustomerEmailValidator(),
-        ]
+        # self.customer_validators = [
+        #     CustomerIdsValidator(),  # TODO(mojtaba - 2025-06-02): check if needed to support customer_ids
+        #     CustomerEmailValidator(),
+        # ]
 
     def validate(self, data: Dict, request: Request) -> Tuple[Dict, List[User]]:
         """Run complete validation pipeline.
@@ -210,7 +209,7 @@ class PlanValidator:
             request: DRF request object
 
         Returns:
-            Tuple of (validated data, list of customer objects)
+            Tuple of (validated data, customer object)
 
         Raises:
             ValidationError: If any validation fails
@@ -219,12 +218,7 @@ class PlanValidator:
         for validator in self.validators:
             data = validator.validate(data, request)
 
-        # Run customer validations and get customers
-        customers = []
-        for validator in self.customer_validators:
-            try:
-                customers.extend(validator.validate(data, request))
-            except ValidationError as e:
-                raise e
+        # Run customer email validation to get customer
+        customer = CustomerEmailValidator().validate(data, request)
 
-        return data, customers
+        return data, customer

@@ -74,8 +74,9 @@ class InstallmentPlanListCreateAPIView(StandardApiResponseMixin, generics.ListCr
     def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        plan = self.perform_create(serializer)
-        output = self.get_serializer(plan)
+        installment_plan = self.perform_create(serializer)
+
+        output = InstallmentPlanDetailSerializer(installment_plan)
 
         return self.success_response(
             message=str(_("Installment plan created successfully")),
@@ -170,7 +171,6 @@ class InstallmentPlanDetailAPIView(
     @swagger_auto_schema(
         tags=["Plans"],
         operation_description=str(_("Retrieve the detailed information of an installment plan.")),
-        request_body=openapi.Schema(type=openapi.TYPE_OBJECT),
         responses={
             status.HTTP_200_OK: openapi.Response(
                 description=str(_("Successfully retrieved installment plan details.")),

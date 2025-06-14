@@ -1,19 +1,57 @@
 from datetime import date
-from typing import List
+from typing import List, overload, Optional, Union
 from django.db import transaction
+from django.contrib.auth import get_user_model
 
+from core.logging.logger import get_logger
 from plan.constants import DEFAULT_INSTALLMENT_PERIOD
 from installment.models import InstallmentPlan
 from installment.signals import skip_installment_creation, enable_installment_creation
 from installment.utils.bulk_create import bulk_create_installments
 from plan.models import Plan
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
+logger = get_logger(__name__)
 
 
 class PlanCreatorService:
-    """Service for creating a new plan with associated installment plans for customers."""
+    """Service for creating a plan (template) and installment plan(s).
+
+    Depending on whether you pass a single customer or a list,
+    it will either:
+      - Create one InstallmentPlan and return it (new API version), or
+      - Create multiple InstallmentPlans in bulk and return the Plan (old API version).
+    """
+
+    @overload
+    def __init__(
+        self,
+        *,
+        merchant: User,
+        name: str,
+        total_amount: float,
+        installment_count: int,
+        installment_period: int,
+        customer: User,
+        start_date: date = ...,
+        plan_status: str = ...
+    ) -> None:
+        """single-customer-version: returns InstallmentPlan."""
+
+    @overload
+    def __init__(
+        self,
+        *,
+        merchant: User,
+        name: str,
+        total_amount: float,
+        installment_count: int,
+        installment_period: int,
+        customers: List[User],
+        start_date: date = ...,
+        plan_status: str = ...
+    ) -> None:
+        """bulk-version: returns Plan."""
 
     def __init__(self, *, merchant: User, name: str, total_amount: float,
                  installment_count: int, installment_period: int = DEFAULT_INSTALLMENT_PERIOD,
@@ -40,15 +78,55 @@ class PlanCreatorService:
         self.start_date = start_date
         self.plan_status = plan_status
 
-    def execute(self) -> Plan:
-        """Create the plan and associated installment plans for the customers.
+    def __init__(
+        self,
+        *,
+        merchant: User,
+        name: str,
+        total_amount: float,
+        installment_count: int,
+        installment_period: int,
+        customer: Optional[User] = None,
+        customers: Optional[List[User]] = None,
+        start_date: date = date.today(),
+        plan_status: str = Plan.Status.ACTIVE
+    ) -> None:
+        """
+        Args:
+            merchant: Merchant creating the plan.
+            name: Plan name.
+            total_amount: Total amount.
+            installment_count: Number of installments.
+            installment_period: Days between installments.
+            customer: Single customer.
+            customers: Multiple customers (bulk-version).
+            start_date: When installments begin.
+            plan_status: Initial plan status.
+        """
+        if bool(customer) == bool(customers):
+            logger.critical(
+                "customer_and_customers_conflict",
+                operation="plan_creation_service_init",
+                user_id=merchant.id
+            )
+            raise ValueError("Provide exactly one of `customer` or `customers`.")
 
-        This method creates a new plan, assigns it to the customers, and creates the related
-        installment plans. The plan status is set to ACTIVE. Installment creation is handled
-        in bulk, and signals are temporarily disabled to avoid unwanted behavior.
+        self.merchant = merchant
+        self.name = name
+        self.total_amount = total_amount
+        self.installment_count = installment_count
+        self.installment_period = installment_period
+        self.customer = customer
+        self.customers = customers
+        self.start_date = start_date
+        self.plan_status = plan_status
+
+    def execute(self) -> Union[InstallmentPlan, Plan]:
+        """Create the Plan and associated installment plan(s).
 
         Returns:
-            Plan: The newly created plan.
+            - InstallmentPlan if `customer` was provided.
+            - Plan if `customers` was provided.
         """
         with transaction.atomic():
             # Create the plan
@@ -61,7 +139,48 @@ class PlanCreatorService:
                 status=self.plan_status,
             )
 
-            # Create InstallmentPlans for each customer
+            # Single-customer flow
+            # All related Installments will be created automatically by Signal.
+            if self.customer:
+                # -------------------------------------------------------------------
+                # We need `ordered_installments` immediately available on the returned
+                # InstallmentPlan so our DetailSerializer (source='ordered_installments')
+                # can render them without issuing another DB query.
+                #
+                # But Django’s bulk_create() bypasses post_save signals entirely, and
+                # our normal post-save handler (which would create installments in
+                # response to plan.save()) would either not run or run at the wrong time.
+                #
+                # Therefore, we:
+                #   1. Temporarily disable the post-save signal handler
+                #   2. Create the InstallmentPlan (skipping the handler)
+                #   3. Manually generate installments via bulk_create_installments()
+                #   4. Read them into memory (ordered by due_date) and attach
+                #      as `ordered_installments`
+                #   5. Re-enable the signal for future operations
+                # This guarantees `inst_plan.ordered_installments` is populated and
+                # correctly ordered before we return.
+                # -------------------------------------------------------------------
+
+                # Disable signal temporarily to prevent auto-installment creation
+                skip_installment_creation()
+                installment_plan = InstallmentPlan.objects.create(
+                    plan=plan,
+                    customer=self.customer,
+                    start_date=self.start_date,
+                )
+                # Re-enable signal to allow future installment creation
+                enable_installment_creation()
+
+                # Create installments for the plans
+                bulk_create_installments([installment_plan])
+
+                ordered = list(installment_plan.installments.order_by('due_date'))
+                setattr(installment_plan, 'ordered_installments', ordered)
+
+                return installment_plan
+
+            # Multi-customer flow
             installment_plans = [
                 InstallmentPlan(
                     plan=plan,
@@ -81,4 +200,4 @@ class PlanCreatorService:
             # Create installments for the plans
             bulk_create_installments(installment_plans)
 
-        return plan
+            return plan
