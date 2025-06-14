@@ -221,3 +221,4 @@ out/
 coverage/
 
 .pnpm-store
+/frontend/pnpm-lock.yaml
