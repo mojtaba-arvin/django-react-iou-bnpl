@@ -1,0 +1,15 @@
+{
+  "name": "@bnpl/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -w",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

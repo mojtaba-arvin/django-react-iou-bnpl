@@ -1,0 +1,48 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": {
+      "react": ["../node_modules/react"],
+      "react-dom": ["../node_modules/react-dom"],
+      "react-admin": ["../node_modules/react-admin"],
+      "jwt-decode": ["../node_modules/jwt-decode"],
+      "jest": ["../node_modules/jest"],
+      "ts-jest": ["../node_modules/ts-jest"],
+      "@testing-library/jest-dom": [
+        "../node_modules/@testing-library/jest-dom"
+      ],
+      "util": ["../node_modules/util"]
+    },
+    "types": [
+      "react",
+      "react-dom",
+      "react-admin",
+      // dev
+      "jest",
+      "@testing-library/jest-dom"
+    ],
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "./dist",
+    // dev
+    "rootDir": ".", // to setup __mocks__ path outside of src
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "isolatedModules": true // Important for Jest
+  },
+  "include": ["src"],
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
+}
