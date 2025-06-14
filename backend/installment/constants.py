@@ -7,10 +7,12 @@ class InstallmentStatusFilters:
 
     UPCOMING = "upcoming"
     PAST = "past"
+    ALL = "all"
 
     CHOICES = (
         (UPCOMING, _("Upcoming Installments")),
         (PAST, _("Past Installments")),
+        (ALL, _("All Installments")),
     )
 
     VALID_FILTERS = {UPCOMING, PAST}

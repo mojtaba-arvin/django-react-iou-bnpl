@@ -10,7 +10,6 @@ from rest_framework.response import Response
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
-from core.exceptions import BusinessException
 from core.pagination import DrfPagination
 from core.permissions import IsCustomer
 from core.views import CheckObjectPermissionAPIView
@@ -22,7 +21,7 @@ from core.utils.response_schemas import (
 from core.utils.standard_api_response_mixin import StandardApiResponseMixin
 from core.logging.logger import get_logger
 from installment.constants import InstallmentStatusFilters
-from installment.models import Installment, InstallmentPlan
+from installment.models import Installment
 from installment.permissions import IsInstallmentCustomer
 from installment.serializers import (
     CustomerFacingInstallmentSerializer,
@@ -71,7 +70,6 @@ class InstallmentPaymentAPIView(
     @swagger_auto_schema(
         tags=["Installments"],
         operation_description=str(_("Pay a specific installment (Customer only)")),
-        request_body=openapi.Schema(type=openapi.TYPE_OBJECT),
         responses={
             status.HTTP_200_OK: openapi.Response(
                 description=str(_("Installment paid successfully")),
@@ -124,55 +122,14 @@ class InstallmentPaymentAPIView(
             )
             raise NotFound(detail=_("Installment not found"))
 
-        if installment.status == Installment.Status.PAID:
-            logger.error(
-                "already_paid",
-                user_id=self.request.user.id,
-                installment_paid_at=installment.paid_at,
-                operation="installment_payment",
-            )
-            raise BusinessException(
-                message=str(_("Installment already paid.")),
-                status_code=status.HTTP_409_CONFLICT,
-            )
-
-        if installment.installment_plan.status != InstallmentPlan.Status.ACTIVE:
-            logger.error(
-                "not_active_installment_plan",
-                user_id=self.request.user.id,
-                installment_plan_status=installment.installment_plan.status,
-                operation="installment_payment",
-            )
-            raise BusinessException(
-                message=str(_("Cannot pay because the installment plan is not active.")),
-                status_code=status.HTTP_409_CONFLICT,
-            )
-
-        previous_unpaid_qs = installment.installment_plan.installments.filter(
-            installment_plan__customer=installment.installment_plan.customer,
-            sequence_number__lt=installment.sequence_number,
-            status__in=[
-                Installment.Status.PENDING,
-                Installment.Status.LATE,
-                Installment.Status.FAILED,
-            ],
+        # Validate payment eligibility
+        service = InstallmentRetrievalService(
+            customer=request.user,
+            raise_validation_errors=True
         )
+        service.validate_installment_payment(installment)
 
-        if previous_unpaid_qs.exists():
-            logger.error(
-                "previous_unpaid",
-                user_id=self.request.user.id,
-                attempted_sequence_number=installment.sequence_number,
-                unpaid_installments=list(
-                    previous_unpaid_qs.values_list("id", "sequence_number", "status")
-                ),
-                operation="installment_payment",
-            )
-            raise BusinessException(
-                message=str(_("Previous installments must be paid before this one.")),
-                status_code=status.HTTP_409_CONFLICT,
-            )
-
+        # Process payment if validation passed
         installment = process_installment_payment(installment)
         serializer = self.get_serializer(installment)
         return self.success_response(

@@ -56,14 +56,17 @@ def bulk_create_installments(installment_plans: Iterable[InstallmentPlan]) -> No
 
         count = plan.installment_count
         total = Decimal(str(plan.total_amount))  # Ensure Decimal
-        base_amount = round(total / count, 2)
+
+        # Convert total to cents using rounding to nearest cent
+        total_cents = int((total * 100).to_integral_value())
+        base_cents = total_cents // count
+        remainder = total_cents % count  # Extra cents to distribute
 
         for seq in range(1, count + 1):
-            # Adjust final installment amount to ensure rounding consistency
-            amount = (
-                total - base_amount * (count - 1)
-                if seq == count else base_amount
-            )
+            # Distribute extra cents to first 'remainder' installments
+            cents = base_cents + (1 if seq <= remainder else 0)
+            amount = Decimal(cents) / Decimal(100)
+
             # Validate amount is positive
             if amount <= 0:
                 logger.critical(
@@ -73,7 +76,7 @@ def bulk_create_installments(installment_plans: Iterable[InstallmentPlan]) -> No
                     plan_id=plan.id,
                     installment_plan_id=installment_plan.id,
                     sequence_number=seq,
-                    base_amount=base_amount,
+                    base_cents=base_cents,
                     calc_amount=amount
                 )
                 raise BusinessException(

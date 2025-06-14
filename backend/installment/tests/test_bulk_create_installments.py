@@ -65,7 +65,7 @@ class BulkCreateInstallmentsTests(TestCase):
 
         # Verify amounts
         actual_amounts = [inst.amount for inst in installments]
-        expected_amounts = [Decimal("33.33"), Decimal("33.33"), Decimal("33.34")]
+        expected_amounts = [Decimal("33.34"), Decimal("33.33"), Decimal("33.33")]
         self.assertListEqual(actual_amounts, expected_amounts)
 
         # Verify due dates

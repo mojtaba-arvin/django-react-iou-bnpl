@@ -4,11 +4,12 @@ from typing import Optional
 from rest_framework import serializers
 
 from installment.constants import InstallmentStatusFilters
-from installment.models import Installment
+from installment.models import Installment, InstallmentPlan
+from installment.services.retrieval import InstallmentRetrievalService
 
 
 class BaseInstallmentSerializer(serializers.ModelSerializer):
-    """Serializer for Installment model."""
+    """Serializer for an Installment model."""
 
     class Meta:
         model = Installment
@@ -36,7 +37,8 @@ class InstallmentFilterSerializer(serializers.Serializer):
 
 
 class CustomerFacingInstallmentSerializer(BaseInstallmentSerializer):
-    """Serializer for listing installments along with subscription and template plan details.
+    """Serializer for listing installments along
+    with payment eligibility flag, subscription and template plan details.
     """
 
     # Fields related to InstallmentPlan (subscription)
@@ -46,11 +48,15 @@ class CustomerFacingInstallmentSerializer(BaseInstallmentSerializer):
     template_plan_id: serializers.SerializerMethodField = serializers.SerializerMethodField()
     template_plan_name: serializers.SerializerMethodField = serializers.SerializerMethodField()
 
+    # As an annotated Field
+    is_payable = serializers.SerializerMethodField()
+
     class Meta(BaseInstallmentSerializer.Meta):
         fields = BaseInstallmentSerializer.Meta.fields + [
             "subscription_id",
             "template_plan_id",
             "template_plan_name",
+            "is_payable",
         ]
         read_only_fields = fields
 
@@ -71,3 +77,18 @@ class CustomerFacingInstallmentSerializer(BaseInstallmentSerializer):
         """Retrieve the name of the template Plan.
         """
         return obj.installment_plan.plan.name
+
+    @staticmethod
+    def get_is_payable(obj: Installment) -> bool:
+        """
+        Calculate payment eligibility based on business rules.
+        Uses pre-annotated value if available, otherwise computes dynamically.
+        """
+
+        # If it's already annotated, use it
+        if hasattr(obj, 'is_payable'):
+            return obj.is_payable
+
+        # Fallback calculation if isn't annotated
+        service = InstallmentRetrievalService(customer=obj.installment_plan.customer)
+        return service.validate_installment_payment(obj)
