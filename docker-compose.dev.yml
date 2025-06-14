@@ -62,16 +62,20 @@ services:
     container_name: bnpl-redis
     env_file:
       - .env
-    command: [
-      "redis-server",
-      "--requirepass", "${REDIS_PASSWORD}",
-      "--appendonly", "yes",
-      "--appendfilename", "appendonly.aof"
-    ]
+    command:
+      [
+        "redis-server",
+        "--requirepass",
+        "${REDIS_PASSWORD}",
+        "--appendonly",
+        "yes",
+        "--appendfilename",
+        "appendonly.aof",
+      ]
     volumes:
       - bnpl-redis-data:/data
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 3
@@ -99,62 +103,75 @@ services:
 
   # Development container for Celery worker
   bnpl-worker:
-   build:
-     context: ./backend
-     dockerfile: Dockerfile.dev
-   container_name: bnpl-worker
-   env_file:
-     - .env
-   environment:
-     - DJANGO_SETTINGS_MODULE=bnpl.settings.development
-     - DJANGO_ENV=development
-   user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
-   volumes:
-     - ./backend:/app:delegated
-   depends_on:
-     - bnpl-api
-     - bnpl-redis
-   command: ["celery", "-A", "bnpl", "worker", "--loglevel=info"]
-   networks:
-       - bnpl-network
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: bnpl-worker
+    env_file:
+      - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=bnpl.settings.development
+      - DJANGO_ENV=development
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - ./backend:/app:delegated
+    depends_on:
+      - bnpl-api
+      - bnpl-redis
+    command: ["celery", "-A", "bnpl", "worker", "--loglevel=info"]
+    networks:
+      - bnpl-network
 
   # Development container for Celery beat
   bnpl-beat:
-   build:
-     context: ./backend
-     dockerfile: Dockerfile.dev
-   container_name: bnpl-beat
-   env_file:
-     - .env
-   environment:
-     - DJANGO_SETTINGS_MODULE=bnpl.settings.development
-     - DJANGO_ENV=development
-   user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
-   volumes:
-     - ./backend:/app:delegated
-   depends_on:
-     - bnpl-api
-     - bnpl-redis
-   command: >
-     celery -A bnpl beat
-       --loglevel=INFO
-       --scheduler django_celery_beat.schedulers:DatabaseScheduler
-   networks:
-     - bnpl-network
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: bnpl-beat
+    env_file:
+      - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=bnpl.settings.development
+      - DJANGO_ENV=development
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - ./backend:/app:delegated
+    depends_on:
+      - bnpl-api
+      - bnpl-redis
+    command: >
+      celery -A bnpl beat
+        --loglevel=INFO
+        --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    networks:
+      - bnpl-network
 
-  # bnpl-frontend:
-  #   build:
-  #     context: ./frontend
-  #     dockerfile: Dockerfile.dev
-  #   container_name: bnpl-frontend
-  #   env_file:
-  #     - .env
-  #   volumes:
-  #     - ./frontend:/app
-  #   ports:
-  #     - "3000:3000"
-  #   networks:
-  #     - bnpl-network
+  bnpl-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: bnpl-frontend
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+      - PNPM_HOME=/app/.pnpm-store # Set pnpm home
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    tty: true
+    stdin_open: true
+    command: ["sh"]
+    volumes:
+      - ./frontend:/app
+    labels:
+      - com.docker.compose.dev.mode=true
+    ports:
+      - "3000:3000" # shell
+      - "3001:3001" # customer-app
+      - "3002:3002" # merchant-app
+      - "9229:9229"
+    networks:
+      - bnpl-network
 
   # bnpl-nginx:
   #   image: nginx:alpine

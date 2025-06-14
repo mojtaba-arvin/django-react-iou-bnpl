@@ -181,3 +181,43 @@ logs/
 
 # Test artifacts
 backend/test_artifacts/
+
+#################
+#   Frontend    #
+#################
+
+# Node modules
+node_modules/
+.pnp/
+.pnp.js
+
+# Next.js build output
+.next/
+
+# React build output
+build/
+
+# TypeScript compiled files
+*.tsbuildinfo
+
+# pnpm store
+.pnpm/
+
+# Yarn Integrity file
+.yarn-integrity
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Next.js static files
+out/
+
+# Next.js caching
+.cache/
+
+# coverage
+coverage/
+
+.pnpm-store

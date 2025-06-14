@@ -1,0 +1,52 @@
+# ---- Base stage ----
+# For development environment setup (e.g., using volumes, specific dependencies)
+FROM node:20-alpine AS base
+
+# Set working directory
+WORKDIR /app
+
+# Enable Corepack
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+ENV COREPACK_ENABLE_STRICT=0
+
+# Install pnpm as root (since we need root access to install global packages)
+RUN corepack enable && corepack prepare pnpm@10.12.1 --activate
+
+# COPY . .
+# We use volumes for live development (bind mount) which requires proper permission handling
+# Key decisions:
+# 1. Using dynamic user assignment (via compose) to match host permissions
+# 2. Keeping pnpm installation global but user-specific
+# 3. Separating root/non-root operations for security
+# 4. Explicit permission setting for /app to ensure writability
+
+# ---- Development stage ----
+FROM base AS dev
+
+# Create appuser with dynamic UID/GID
+RUN addgroup -S appgroup && \
+    adduser -S appuser -G appgroup
+
+# Set up pnpm environment
+ENV STORE_DIR=/home/appuser/.pnpm-store
+ENV PNPM_HOME=/home/appuser/.pnpm-global
+ENV NPM_CONFIG_PREFIX=$PNPM_HOME
+ENV PATH=$PNPM_HOME:$PATH
+RUN mkdir -p $PNPM_HOME && \
+    chown -R appuser:appgroup $PNPM_HOME
+
+# Switch to the non-root user
+USER appuser
+
+# This stays in the image across restarts
+# Install globally (after switching to non-root user)
+# RUN pnpm add -g ...
+
+# Set directory permissions
+USER root
+RUN chown -R appuser:appgroup /app
+
+USER appuser
+
+# Default shelll
+CMD ["sh"]
