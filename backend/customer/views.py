@@ -8,7 +8,7 @@ from drf_yasg import openapi
 
 from core.pagination import DrfPagination
 from core.permissions import IsMerchant
-from customer.selectors import get_eligible_customers_for_merchant
+from customer.services.eligibility import CustomerEligibilityService
 from customer.serializers import EligibleCustomerSerializer
 from core.utils.standard_api_response_mixin import StandardApiResponseMixin
 from core.utils.response_schemas import api_error_schema, build_success_response_schema
@@ -24,11 +24,22 @@ class EligibleCustomerListAPIView(StandardApiResponseMixin, generics.ListAPIView
     pagination_class = DrfPagination
 
     def get_queryset(self):
-        return get_eligible_customers_for_merchant()
+        # support ?email=foo for autocomplete / filtering
+        email = self.request.query_params.get('q')
+        return CustomerEligibilityService.get_eligible_customers_queryset(email=email)
 
     @swagger_auto_schema(
         tags=["Customers"],
         operation_description=str(_("List eligible customers (Merchant only)")),
+        manual_parameters=[
+            openapi.Parameter(
+                name="q",
+                in_=openapi.IN_QUERY,
+                description=str(_("Filter eligible customers by email substring (case‐insensitive)")),
+                type=openapi.TYPE_STRING,
+                required=False,
+            ),
+        ],
         responses={
             status.HTTP_200_OK: openapi.Response(
                 description=str(_("List of eligible customers")),
