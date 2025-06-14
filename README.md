@@ -9,34 +9,56 @@
 
 A full-stack **Buy Now, Pay Later (BNPL)** system based on an **I.O.U-based installment loan model**, built with **Django** and **React.js** with **TypeScript**, using **Micro-Frontend** architecture.
 
-It follows a **Private/Assigned Plan** structure, where merchants assign installment plans to specific customers. The system is also designed to support **Public Plans** in the future, allowing broader plan accessibility beyond individual assignments.
-
 It follows a **Private/Assigned Plan** structure, where merchants assign installment plans to specific customers. The system includes separate **react-admin** panels under ‍‍`customer/*` and `merchant/*`, with login access restricted to the user's account type.
 
-## Frontend Features
+## Table of Contents
 
-### Architecture
+- [Frontend Features](#frontend-features)
+  - [Architecture](#architecture)
+  - [Auth & Data](#auth--data)
+  - [Testing & Quality](#testing--quality)
+  - [Observability](#observability)
+- [Backend Features](#backend-features)
+  - [Architecture & Code Design](#architecture--code-design)
+  - [Authentication & Permissions](#authentication--permissions)
+  - [Tooling](#tooling)
+  - [API Documentation](#api-documentation)
+  - [CI/CD & Test Automation](#cicd--test-automation)
+  - [Installments & Plans Logic](#installments--plans-logic)
+  - [Background Tasks (Celery)](#background-tasks-celery)
+  - [User Management](#user-management)
+  - [DB Models](#db-models)
+- [Getting Started](#getting-started-development)
+  - [Prerequisites](#prerequisites)
+  - [Development Setup](#step-1-copy-env-file-to-configre)
+- [Project Structures](#project-structures)
+- [Tech Stacks](#tech-stacks)
+- **[Demo Walkthrough](#demo-walkthrough)**
+
+## <a id="frontend-features"></a>Frontend Features
+
+### <a id="architecture"></a>Architecture
 
 - **Micro‑Frontend (Module Federation)** – Runtime loading of independent React apps, enabling parallel development and isolated deployments.
 - **Clean Architecture** – Separation into Presentation, Application, Infrastructure and Domain layers to enhance modularity and testability.
 
-### Auth & Data
+### <a id="auth--data"></a>Auth & Data
 
 - **Auth Provider** – JWT authentication flow with automatic access and refresh token handling for secure session management.
 - **Data Provider** – React-Admin compatible API client with error handler decorator.
 
-### Testing & Quality
+### <a id="testing--quality"></a>Testing & Quality
 
 - **Jest** – Comprehensive tests for components and utilities to ensure code reliability.
 - **Prettier & ESLint** - Automated code formatting and linting to enforce style consistency and catch errors early.
 
-### Observability
+### <a id="observability"></a>Observability
 
 - **OpenTelemetry Integration** – Capturing frontend metrics and traces for end-to-end performance monitoring and sensitive fields in request metadata are automatically redacted to protect personal data.
 
-## Backend Features
+## <a id="backend-features"></a>Backend Features
 
-### Architecture & Code Design
+### <a id="architecture--code-design"></a>Architecture & Code Design
 
 - **Separated view and service logic** – Follows clean architecture principles, aiding in maintainability and testing.
 - **DRF-compatible Standardized API response mixin** – Provides uniform success/error response formats, improving client integration and Swagger docs clarity.
@@ -45,64 +67,64 @@ It follows a **Private/Assigned Plan** structure, where merchants assign install
 - **Unified paginated list responses** – Ensures consistent pagination output, reducing frontend complexity.
 - **Modular Django settings (development/production)** – Simplifies environment-based configuration management with proper type casting.
 
-### Authentication & Permissions
+### <a id="authentication--permissions"></a>Authentication & Permissions
 
 - **Reject tokens if user is inactive** – Enhances security by invalidating access even with a valid token.
 - **Custom JWT for skipping expired tokens on public endpoints** – Allows anonymous access without breaking flow, improving public endpoint UX.
 - **Custom DRF permission classes** – Improves UX by showing specific access error messages.
 - **Object-level permission view mixin** – Provides auto-checks in viewsets with reusable logic
 
-### Tooling
+### <a id="tooling"></a>Tooling
 
 - **Structured logging with JSON format (structlog)** – Supports modern observability tools like ELK or Datadog.
 - **FactoryBoy + DRF APITestCase** – Allows fast, isolated, and reusable tests, boosting test coverage and quality.
 - **PEP8, typing, and Google docstrings** – Increases code readability, maintainability, and quality.
 
-### API Documentation
+### <a id="api-documentation"></a>API Documentation
 
 - **Swagger schema utilities for response documentation** – Improves API clarity and keeps documentation aligned with real behavior.
 
-### CI/CD & Test Automation
+### <a id="cicd--test-automation"></a>CI/CD & Test Automation
 
 - **Prebuilt Docker image for backend CI** – Reduces CI time by skipping local build and using cached layers.
 - **GitHub workflow: backend tests with concurrency rules** – Smart test runs based on event type, skipping unnecessary builds.
 - **Test artifacts: logs and coverage reports** – Enhances CI transparency and developer feedback loops.
 
-### Installments & Plans Logic
+### <a id="installments--plans-logic"></a>Installments & Plans Logic
 
 - **Bulk create installments via thread-local flag for signal** – Optimizes mass insert operations and automates setup logic.
 - **Signal for updating installment plan status** – Keeps data integrity by reflecting changes in related models.
 - **Installment conflict prevention checks** – Prevents logic bugs like double payments or out-of-sequence transactions.
 - **Conditional UniqueConstraint and CheckConstraint** – Enforces business rules at the DB level, protecting data consistency for unique installment sequence and due date per plan with correct amount
 
-### Background Tasks (Celery)
+### <a id="background-tasks-celery"></a>Background Tasks (Celery)
 
 - **Celery tasks for reminders and overdue checks** – Adds scalability by offloading background operations.
 - **Separated Celery workers as Docker services** - helps decouple task processing from the main API which improves maintainability, scalability, and fault tolerance of the system.
 
-### User Management
+### <a id="user-management"></a>User Management
 
 - **Signals for customer/merchant profile creation** – Automates related object creation, ensuring consistency.
 - **Auto approve merchants and customer credits in debug mode** – Speeds up development/testing by bypassing manual checks.
 - **DRF-based unique email validation + Django password validation** – Ensures secure user creation.
 - **Custom UserManager + Support the Group and Permission models** – Enables extensible user creation logic and permission handling.
 
-### DB Models
+### <a id="db-models"></a>DB Models
 
 - **Abstract base model to add timestamps with indexed created_at** – Improves database efficiency for ordering/filtering operations.
 - **Future-proof database design with abstracted plan-customer relation** – The system avoids directly linking `Plan -> Customer` to enable future support for Public Plans. Instead, it introduces an intermediate `InstallmentPlan` that connects a `Plan` (owned by a merchant)
 to a `User` (the customer), providing flexibility for both assigned and publicly available plans.
 
-## Getting started (Development)
+## <a id="getting-started-development"></a>Getting started (Development)
 
-### Prerequisites
+### <a id="prerequisites"></a>Prerequisites
 
 Make sure you have the following installed on your system:
 
 - [Docker](https://docs.docker.com/get-docker/)
 - [Docker Compose](https://docs.docker.com/compose/install/)
 
-### Step 1: Copy `.env` file to configre
+### <a id="step-1-copy-env-file-to-configre"></a>Step 1: Copy `.env` file to configre
 
 Create a .env file by copying the example configuration:
 
@@ -197,7 +219,7 @@ Run the following command to enter the **frontend** container:
 docker compose -f docker-compose.dev.yml exec bnpl-frontend /bin/sh
 ```
 
-### Step 4: Install packages and run the development script
+### Step 8: Install packages and run the development script
 
 Once inside the container, execute the following commands to install the necessary packages and run the development script. (The script will launch with the parallel flag to start remote services and the shell application.)
 
@@ -314,7 +336,7 @@ If you created a superuser, you can access the Django admin interface at:
 - User model includes **inline editing** for CustomerProfile and MerchantProfile.
 - Show **clickable links** to the related Plan and Customer (User), for fast navigation and context.
 
-## Project Structure (Backend)
+## <a id="project-structures"></a>Project Structure (Backend)
 
 ```bash
 .
@@ -346,7 +368,7 @@ If you created a superuser, you can access the Django admin interface at:
 └── Dockerfile.dev
 ```
 
-## Backend Tech Stack
+## <a id="tech-stacks"></a>Backend Tech Stack
 
 | Layer           | Technology                           | Notes                                |
 | --------------- | ------------------------------------ | ------------------------------------ |
@@ -374,12 +396,9 @@ If you created a superuser, you can access the Django admin interface at:
 | **Testing**        | Jest, @testing-library/react         | Component & integration tests      |
 | **Monorepo**       | pnpm workspaces                      | Multi-package management           |
 
-
-## Demo Walkthrough
+## <a id="demo-walkthrough"></a>Demo Walkthrough
 
 ### 1. Home Page
-
-The Shell homepage provides two buttons: one for merchants and one for customers. Click on the appropriate button to proceed.
 
 ![Shell Home Page](docs/assets/01-shell-home-page.png)
 **Shell Homepage:** [http://localhost:3000](http://localhost:3000)
